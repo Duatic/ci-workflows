@@ -1,0 +1,80 @@
+name: ROS industrial_ci
+# original author: Denis Štogl <denis@stoglrobotics.de>
+# Central, org-wide reusable workflow for building ROS 2 packages with industrial_ci.
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/ros_ici.yml@v1
+
+on:
+  workflow_call:
+    inputs:
+      ros_distro:
+        description: 'ROS_DISTRO variable for industrial_ci'
+        required: true
+        type: string
+      ros_repo:
+        description: 'ROS_REPO to run for industrial_ci. Possible values: "main", "testing"'
+        default: 'main'
+        required: false
+        type: string
+      upstream_workspace:
+        description: 'UPSTREAM_WORKSPACE variable for industrial_ci. Usually path to local .repos file.'
+        default: ''
+        required: false
+        type: string
+      before_install_upstream_dependencies:
+        description: 'BEFORE_INSTALL_UPSTREAM_DEPENDENCIES variable for industrial_ci'
+        default: ''
+        required: false
+        type: string
+      ref_for_scheduled_build:
+        description: 'Ref to check out for scheduled builds. Usually the name of a branch or a tag.'
+        default: ''
+        required: false
+        type: string
+      timeout_minutes:
+        description: 'Maximum time the job is allowed to run.'
+        default: 30
+        required: false
+        type: number
+      ccache_dir:
+        description: 'CCache dir that should be used. Relative to github.workspace'
+        default: '.ccache'
+        required: false
+        type: string
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+    secrets:
+      CI_PAT:
+        description: 'Optional PAT used to clone private upstream dependencies listed in upstream_workspace.'
+        required: false
+
+jobs:
+  ici:
+    name: ${{ inputs.ros_distro }} ${{ inputs.ros_repo }}
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    runs-on: ${{ inputs.runner }}
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/${{ inputs.ccache_dir }}
+      CACHE_PREFIX: ${{ inputs.ros_distro }}-${{ inputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event_name == 'schedule' && inputs.ref_for_scheduled_build || github.ref }}
+      - name: Cache ccache
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ env.CACHE_PREFIX }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ env.CACHE_PREFIX }}-${{ github.sha }}
+            ccache-${{ env.CACHE_PREFIX }}
+      - uses: 'ros-industrial/industrial_ci@master'
+        env:
+          UPSTREAM_WORKSPACE: ${{ inputs.upstream_workspace }}
+          ROS_DISTRO: ${{ inputs.ros_distro }}
+          ROS_REPO: ${{ inputs.ros_repo }}
+          BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ inputs.before_install_upstream_dependencies }}
+          BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}

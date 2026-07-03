@@ -1,0 +1,30 @@
+name: pre-commit
+# Central, org-wide reusable workflow that runs pre-commit hooks across all files.
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/pre-commit.yml@v1
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+      python_version:
+        description: 'Python version used to run pre-commit.'
+        default: '3.13'
+        required: false
+        type: string
+
+jobs:
+  pre-commit:
+    name: Format
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ inputs.python_version }}
+      - uses: pre-commit/action@v3.0.1
+        with:
+          extra_args: --all-files --hook-stage manual
