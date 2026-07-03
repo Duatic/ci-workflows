@@ -1,0 +1,103 @@
+name: CI orchestrator
+# Consumer-facing entry point for ROS 2 package CI across the Duatic org.
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+#
+# Owns everything that shouldn't be re-decided per repo:
+#   - the distro matrix and the ROS_REPO channel per distro (rolling -> testing, else main)
+#   - gating: the primary distro (jazzy) must succeed before the rest run
+#   - auto-cancelling a superseded run on the same ref
+#   - a cheap failing check on draft PRs instead of running the full (expensive) matrix
+#
+# Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
+# optionally a single distro to build via workflow_dispatch.
+
+on:
+  workflow_call:
+    inputs:
+      ros_distro:
+        description: 'Distro to build. "all" (default) runs the full gated matrix; a single distro name builds only that one.'
+        default: 'all'
+        required: false
+        type: string
+      runner:
+        description: 'Runner label(s) to run the build jobs on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+    secrets:
+      CI_PAT:
+        description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
+        required: false
+
+concurrency:
+  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  draft_guard:
+    name: Draft PR - CI skipped
+    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fail fast on draft PRs
+        run: |
+          echo "::error::CI does not run on draft PRs to save compute. Mark this PR 'Ready for review' to run the full build."
+          exit 1
+
+  prepare:
+    name: Plan distro matrix
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    runs-on: ubuntu-latest
+    outputs:
+      primary: ${{ steps.plan.outputs.primary }}
+      secondary: ${{ steps.plan.outputs.secondary }}
+    steps:
+      - id: plan
+        env:
+          SEL_DISTRO: ${{ inputs.ros_distro }}
+        run: |
+          channel() { case "$1" in rolling) echo testing;; *) echo main;; esac; }
+          entry() { printf '{"ros_distro":"%s","ros_repo":"%s"}' "$1" "$(channel "$1")"; }
+          if [ -z "$SEL_DISTRO" ] || [ "$SEL_DISTRO" = "all" ]; then
+            primary="[$(entry jazzy)]"
+            secondary="[$(entry kilted),$(entry lyrical),$(entry rolling)]"
+          else
+            primary="[$(entry "$SEL_DISTRO")]"
+            secondary="[]"
+          fi
+          echo "primary=${primary}" >> "$GITHUB_OUTPUT"
+          echo "secondary=${secondary}" >> "$GITHUB_OUTPUT"
+
+  primary:
+    name: primary
+    needs: prepare
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.primary) }}
+    uses: ./.github/workflows/reusable_ici.yml
+    with:
+      ros_distro: ${{ matrix.ros_distro }}
+      ros_repo: ${{ matrix.ros_repo }}
+      runner: ${{ inputs.runner }}
+    secrets: inherit
+
+  secondary:
+    name: secondary
+    needs: [prepare, primary]
+    if: ${{ needs.prepare.outputs.secondary != '[]' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.prepare.outputs.secondary) }}
+    uses: ./.github/workflows/reusable_ici.yml
+    with:
+      ros_distro: ${{ matrix.ros_distro }}
+      ros_repo: ${{ matrix.ros_repo }}
+      runner: ${{ inputs.runner }}
+    secrets: inherit
+
+  pre-commit:
+    name: pre-commit
+    if: ${{ (inputs.ros_distro == '' || inputs.ros_distro == 'all') && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    uses: ./.github/workflows/pre-commit.yml

@@ -1,7 +1,8 @@
 name: ROS industrial_ci
 # original author: Denis Štogl <denis@stoglrobotics.de>
 # Central, org-wide reusable workflow for building ROS 2 packages with industrial_ci.
-# Consumers: uses: Duatic/ci-workflows/.github/workflows/ros_ici.yml@v1
+# Builds ONE distro/channel combination. Not meant to be called directly by product repos —
+# use ci_orchestrator.yml, which drives this per distro with the matrix/gating logic.
 
 on:
   workflow_call:
@@ -13,21 +14,6 @@ on:
       ros_repo:
         description: 'ROS_REPO to run for industrial_ci. Possible values: "main", "testing"'
         default: 'main'
-        required: false
-        type: string
-      upstream_workspace:
-        description: 'UPSTREAM_WORKSPACE variable for industrial_ci. Usually path to local .repos file.'
-        default: ''
-        required: false
-        type: string
-      before_install_upstream_dependencies:
-        description: 'BEFORE_INSTALL_UPSTREAM_DEPENDENCIES variable for industrial_ci'
-        default: ''
-        required: false
-        type: string
-      ref_for_scheduled_build:
-        description: 'Ref to check out for scheduled builds. Usually the name of a branch or a tag.'
-        default: ''
         required: false
         type: string
       timeout_minutes:
@@ -47,7 +33,7 @@ on:
         type: string
     secrets:
       CI_PAT:
-        description: 'Optional PAT used to clone private upstream dependencies listed in upstream_workspace.'
+        description: 'Optional PAT used to clone private upstream dependencies listed in the repos.list workspace file.'
         required: false
 
 jobs:
@@ -57,24 +43,35 @@ jobs:
     runs-on: ${{ inputs.runner }}
     env:
       CCACHE_DIR: ${{ github.workspace }}/${{ inputs.ccache_dir }}
-      CACHE_PREFIX: ${{ inputs.ros_distro }}-${{ inputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event_name == 'schedule' && inputs.ref_for_scheduled_build || github.ref }}
+      - name: Detect upstream workspace and extra apt dependencies
+        id: detect
+        run: |
+          if [ -f repos.list ]; then
+            echo "upstream_workspace=repos.list" >> "$GITHUB_OUTPUT"
+          else
+            echo "upstream_workspace=" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f .github/ci/apt_dependencies ]; then
+            packages=$(grep -v '^\s*#' .github/ci/apt_dependencies | tr '\n' ' ')
+            echo "before_install=sudo apt-get install -y -qq ${packages}" >> "$GITHUB_OUTPUT"
+          else
+            echo "before_install=" >> "$GITHUB_OUTPUT"
+          fi
       - name: Cache ccache
         uses: actions/cache@v6
         with:
           path: ${{ env.CCACHE_DIR }}
-          key: ccache-${{ env.CACHE_PREFIX }}-${{ github.sha }}-${{ github.run_id }}
+          key: ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}-${{ github.sha }}-${{ github.run_id }}
           restore-keys: |
-            ccache-${{ env.CACHE_PREFIX }}-${{ github.sha }}
-            ccache-${{ env.CACHE_PREFIX }}
+            ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}-${{ github.sha }}
+            ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}
       - uses: 'ros-industrial/industrial_ci@master'
         env:
-          UPSTREAM_WORKSPACE: ${{ inputs.upstream_workspace }}
+          UPSTREAM_WORKSPACE: ${{ steps.detect.outputs.upstream_workspace }}
           ROS_DISTRO: ${{ inputs.ros_distro }}
           ROS_REPO: ${{ inputs.ros_repo }}
-          BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ inputs.before_install_upstream_dependencies }}
+          BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}
           BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}
