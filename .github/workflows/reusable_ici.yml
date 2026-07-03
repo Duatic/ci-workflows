@@ -84,6 +84,9 @@ jobs:
         run: |
           ( while true; do
               { date -u +%FT%TZ; df -h /; free -h; echo '---'; } >> /tmp/resource-monitor.log
+              for cid in $(docker ps -q); do
+                { echo "== docker exec $cid ps auxf =="; docker exec "$cid" ps auxf 2>&1; echo '---'; } >> /tmp/container-procs.log
+              done
               sleep 15
             done ) &
           echo $! > /tmp/monitor.pid
@@ -109,5 +112,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: resource-monitor-${{ inputs.ros_distro }}-${{ inputs.ros_repo }}
-          path: /tmp/resource-monitor.log
+          path: |
+            /tmp/resource-monitor.log
+            /tmp/container-procs.log
           if-no-files-found: ignore
