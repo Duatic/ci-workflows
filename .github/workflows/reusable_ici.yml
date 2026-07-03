@@ -73,6 +73,20 @@ jobs:
           restore-keys: |
             ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}-${{ github.sha }}
             ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}
+      # TEMPORARY: diagnosing a self-hosted-runner hang inside industrial_ci's colcon_setup
+      # apt-get step (duatic_skills#13). Remove once root-caused.
+      - name: DEBUG - host resources before industrial_ci
+        run: |
+          echo "== df -h =="; df -h
+          echo "== free -h =="; free -h
+          echo "== docker system df =="; docker system df -v || true
+      - name: DEBUG - start background resource monitor
+        run: |
+          ( while true; do
+              { date -u +%FT%TZ; df -h /; free -h; echo '---'; } >> /tmp/resource-monitor.log
+              sleep 15
+            done ) &
+          echo $! > /tmp/monitor.pid
       - uses: 'ros-industrial/industrial_ci@master'
         env:
           UPSTREAM_WORKSPACE: ${{ steps.detect.outputs.upstream_workspace }}
@@ -81,3 +95,19 @@ jobs:
           BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}
           AFTER_INSTALL_TARGET_DEPENDENCIES: ${{ steps.detect.outputs.pip_install }}
           BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}
+      - name: DEBUG - stop background resource monitor
+        if: always()
+        run: kill "$(cat /tmp/monitor.pid)" 2>/dev/null || true
+      - name: DEBUG - host resources after industrial_ci
+        if: always()
+        run: |
+          echo "== df -h =="; df -h
+          echo "== free -h =="; free -h
+          echo "== docker system df =="; docker system df -v || true
+      - name: DEBUG - upload resource monitor log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: resource-monitor-${{ inputs.ros_distro }}-${{ inputs.ros_repo }}
+          path: /tmp/resource-monitor.log
+          if-no-files-found: ignore
