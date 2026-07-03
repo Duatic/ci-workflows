@@ -46,7 +46,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Detect upstream workspace and extra apt dependencies
+      - name: Detect upstream workspace, extra apt dependencies, and pip requirements
         id: detect
         run: |
           if [ -f repos.list ]; then
@@ -59,6 +59,11 @@ jobs:
             echo "before_install=sudo apt-get install -y -qq ${packages}" >> "$GITHUB_OUTPUT"
           else
             echo "before_install=" >> "$GITHUB_OUTPUT"
+          fi
+          if [ -f requirements.txt ]; then
+            echo "pip_install=python3 -m pip install --break-system-packages -r requirements.txt" >> "$GITHUB_OUTPUT"
+          else
+            echo "pip_install=" >> "$GITHUB_OUTPUT"
           fi
       - name: Cache ccache
         uses: actions/cache@v6
@@ -74,4 +79,5 @@ jobs:
           ROS_DISTRO: ${{ inputs.ros_distro }}
           ROS_REPO: ${{ inputs.ros_repo }}
           BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}
+          AFTER_INSTALL_TARGET_DEPENDENCIES: ${{ steps.detect.outputs.pip_install }}
           BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}

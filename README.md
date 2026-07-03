@@ -41,6 +41,9 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 - **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) — drop a `.github/ci/apt_dependencies`
   file in the consumer repo (one package per line, `#` comments allowed); picked up automatically.
   Most repos don't need this file at all.
+- **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) — drop a `requirements.txt`
+  file at the consumer repo root; `pip install`ed (full dependency tree, `--break-system-packages`)
+  after target dependencies are installed, before build/test. Most repos don't need this file at all.
 - **Concurrency** — every orchestrator run is keyed on `<caller repo>-<caller workflow>-<caller ref>`
   with `cancel-in-progress: true`, so pushing a new commit to a branch/PR cancels the superseded run.
   No consumer configuration needed.
