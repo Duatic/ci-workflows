@@ -80,12 +80,16 @@ jobs:
           echo "== df -h =="; df -h
           echo "== free -h =="; free -h
           echo "== docker system df =="; docker system df -v || true
+      - name: DEBUG - is CI_PAT reaching this job?
+        run: |
+          echo "CI_PAT set: ${{ secrets.CI_PAT != '' }}"
       - name: DEBUG - start background resource monitor
         run: |
           ( while true; do
               { date -u +%FT%TZ; df -h /; free -h; echo '---'; } >> /tmp/resource-monitor.log
               for cid in $(docker ps -q); do
                 { echo "== docker exec $cid ps auxf =="; docker exec "$cid" ps auxf 2>&1; echo '---'; } >> /tmp/container-procs.log
+                { echo -n "insteadOf rules configured: "; docker exec "$cid" git config --global --get-regexp 'url\..*\.insteadof' 2>/dev/null | wc -l; } >> /tmp/container-procs.log
               done
               sleep 15
             done ) &
