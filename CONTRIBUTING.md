@@ -30,4 +30,4 @@ need to be validated against a real consumer, since this repo has no build/test 
 1. Actually dispatch a consumer workflow against your branch/commit and watch it run, e.g.
    `gh run watch <id> --repo Duatic/<consumer-repo> --exit-status`.
 2. When testing something version-sensitive, point the consumer's `uses:` at the exact commit SHA
-   first, confirm it works, then move a tag — don't debug against a moving tag.
+   first, confirm it works, then move a tag - don't debug against a moving tag.
