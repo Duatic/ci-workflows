@@ -32,7 +32,7 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
 - **`upstream_workspace`** - auto-detected: `reusable_ici.yml` uses `repos.list` if it exists at the repo root, otherwise nothing.
-- **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) - drop a `.github/ci/apt_dependencies` file in the consumer repo (one package per line, `#` comments allowed); picked up automatically. Most repos don't need this file at all.
+- **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) - drop an `Aptfile` at the consumer repo root (one package per line, `#` comments allowed); picked up automatically. Most repos don't need this file at all.
 - **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) - drop a `requirements.txt` file at the consumer repo root; `pip install`ed (full dependency tree, `--break-system-packages`) after target dependencies are installed, before build/test. Most repos don't need this file at all.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator runs a single job that fails immediately with a message to mark the PR ready for review, instead of building anything. Marking the PR "Ready for review" runs the real matrix.
 
@@ -82,8 +82,7 @@ jobs:
 
 ## Leaf workflows (internal, not called directly by product repos)
 
-- **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one
-  distro/channel combination. Auto-detects `repos.list` and `.github/ci/apt_dependencies`.
+- **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
 - **`pre-commit.yml`** - runs `pre-commit` across all files.
 
 ## Requirements on consumer repos

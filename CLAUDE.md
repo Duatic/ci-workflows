@@ -28,8 +28,8 @@ configure:
   `main` — this mapping lives in `ci_orchestrator.yml`'s `prepare` job and nowhere else)
 - which distro gates which (jazzy always builds first; the rest only run if it succeeds)
 - whether it has an `UPSTREAM_WORKSPACE` (`reusable_ici.yml` auto-detects a `repos.list` file)
-- extra `apt` install steps (auto-detected from an optional `.github/ci/apt_dependencies` file in the
-  consumer repo, one package per line, `#` comments allowed)
+- extra `apt` install steps (auto-detected from an optional `Aptfile` at the consumer repo root, one
+  package per line, `#` comments allowed)
 - extra `pip` deps that rosdep can't resolve (auto-detected from an optional `requirements.txt` file
   at the consumer repo root, installed with full deps via `AFTER_INSTALL_TARGET_DEPENDENCIES`)
 - concurrency/cancellation behavior (declared once, centrally, in `ci_orchestrator.yml`)
