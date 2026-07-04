@@ -26,7 +26,7 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one and skips `pre-commit`. |
+| `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. `pre-commit` always runs regardless of this input. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
 
 | Secret | Required | Description |
