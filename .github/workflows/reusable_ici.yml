@@ -31,9 +31,17 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+      badge_gist_id:
+        description: 'Optional gist ID to publish a pass/fail status badge to. Empty (default) disables badge publishing. Only written on pushes to main.'
+        default: ''
+        required: false
+        type: string
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in the repos.list workspace file.'
+        required: false
+      GIST_TOKEN:
+        description: 'PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 jobs:
@@ -81,3 +89,13 @@ jobs:
           BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}
           AFTER_INSTALL_TARGET_DEPENDENCIES: ${{ steps.detect.outputs.pip_install }}
           BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}
+      - name: Publish status badge
+        if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+        uses: schneegans/dynamic-badges-action@v1.8.0
+        with:
+          auth: ${{ secrets.GIST_TOKEN }}
+          gistID: ${{ inputs.badge_gist_id }}
+          filename: ${{ github.event.repository.name }}-${{ inputs.ros_distro }}.json
+          label: ${{ inputs.ros_distro }}
+          message: ${{ job.status == 'success' && 'passing' || 'failing' }}
+          color: ${{ job.status == 'success' && 'brightgreen' || 'red' }}

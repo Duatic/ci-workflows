@@ -31,10 +31,12 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 |---|---|---|---|
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
+| `badge_gist_id` | no | `''` | Opt-in: gist ID to publish per-distro pass/fail status badges to. Empty disables badge publishing entirely. |
 
 | Secret | Required | Description |
 |---|---|---|
 | `CI_PAT` | no | PAT used to clone private upstream dependencies from a `repos.list` file at the repo root. Pass via `secrets: inherit`; omit entirely for public-only repos. |
+| `GIST_TOKEN` | no | PAT with `gist` scope. Required only if `badge_gist_id` is set. Pass via `secrets: inherit`. |
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
 - **`upstream_workspace`** - auto-detected: `reusable_ici.yml` uses `repos.list` if it exists at the repo root, otherwise nothing.
@@ -86,6 +88,35 @@ jobs:
     secrets: inherit
 ```
 
+## Status badges for private repos (opt-in, gist-backed)
+
+GitHub's native workflow `badge.svg` reports at the workflow-**file** level, so it can't show
+one badge per distro, and it won't render for anonymous viewers of a **private** repo's README.
+To get per-distro badges that work regardless of repo visibility, the orchestrator can publish
+each distro's pass/fail to a gist, which [shields.io's `endpoint`
+renderer](https://shields.io/badges/endpoint-badge) then turns into a badge:
+
+1. Create a public gist (any placeholder file) and a PAT with only the `gist` scope.
+2. Add the PAT as a repo (or org) secret named `GIST_TOKEN`.
+3. Pass `badge_gist_id` and `secrets: inherit` in your `ci.yml`:
+   ```yaml
+   jobs:
+     ci:
+       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+       with:
+         ros_distro: ${{ inputs.ros_distro }}
+         badge_gist_id: <your-gist-id>
+       secrets: inherit
+   ```
+4. Point README badges at the gist file, namespaced `<repo-name>-<distro>.json`:
+   ```markdown
+   [![Jazzy](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/<user>/<gist-id>/raw/<repo-name>-jazzy.json)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
+   ```
+
+Badges are only written on pushes to `main` (matching the old `?branch=main` badge semantics) —
+pull request runs never touch them. A single gist can hold badges for multiple repos since the
+filename is namespaced per repo.
+
 ## Leaf workflows (internal, not called directly by product repos)
 
 - **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
@@ -93,3 +124,4 @@ jobs:
 
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
+- Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
