@@ -1,0 +1,67 @@
+name: Release
+# Manually cut a new semver release for this repo: computes the next version
+# from the latest tag, creates the immutable vX.Y.Z tag, force-moves the
+# floating major tag (vN) to the same commit, and publishes a GitHub Release
+# with auto-generated notes. Dispatch from the branch you want to release
+# (normally main).
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Which part of the version to increment'
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Compute next version
+        id: version
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          latest=$(git tag -l 'v*.*.*' --sort=-v:refname | head -n1)
+          latest=${latest:-v0.0.0}
+          IFS=. read -r major minor patch <<< "${latest#v}"
+          case "$BUMP" in
+            major) major=$((major+1)); minor=0; patch=0 ;;
+            minor) minor=$((minor+1)); patch=0 ;;
+            patch) patch=$((patch+1)) ;;
+          esac
+          new="v${major}.${minor}.${patch}"
+          if git rev-parse -q --verify "refs/tags/${new}" >/dev/null; then
+            echo "::error::Tag ${new} already exists"
+            exit 1
+          fi
+          echo "new=${new}" >> "$GITHUB_OUTPUT"
+          echo "major=v${major}" >> "$GITHUB_OUTPUT"
+          echo "Releasing ${new} (from ${latest}); moving major tag v${major}"
+
+      - name: Create and push tags
+        env:
+          NEW: ${{ steps.version.outputs.new }}
+          MAJOR: ${{ steps.version.outputs.major }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag "$NEW"
+          git tag -f "$MAJOR"
+          git push origin "$NEW"
+          git push -f origin "$MAJOR"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEW: ${{ steps.version.outputs.new }}
+        run: gh release create "$NEW" --generate-notes --title "$NEW"

@@ -13,6 +13,12 @@ uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
 `v1` always points at the latest compatible `v1.x.y` release. Immutable `v1.0.0`-style tags exist
 for rollback/bisection. Breaking input changes bump the major (`@v2`).
 
+Releases are cut via the **Release** workflow (`workflow_dispatch`, `.github/workflows/release.yml`)
+from the [Actions tab](https://github.com/Duatic/ci-workflows/actions/workflows/release.yml): pick
+`patch`/`minor`/`major`, and it computes the next version from the latest tag, creates the immutable
+`vX.Y.Z` tag, force-moves the corresponding major tag (`vX`) to the same commit, and publishes a
+GitHub Release with auto-generated notes.
+
 ## What consumers call
 
 Repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO` channel
