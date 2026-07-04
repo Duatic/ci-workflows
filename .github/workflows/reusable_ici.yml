@@ -61,7 +61,7 @@ jobs:
             echo "before_install=" >> "$GITHUB_OUTPUT"
           fi
           if [ -f requirements.txt ]; then
-            echo "pip_install=python3 -m pip install --break-system-packages -r requirements.txt" >> "$GITHUB_OUTPUT"
+            echo "pip_install=python3 -m pip install --break-system-packages --ignore-installed -r requirements.txt" >> "$GITHUB_OUTPUT"
           else
             echo "pip_install=" >> "$GITHUB_OUTPUT"
           fi
