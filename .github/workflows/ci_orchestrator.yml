@@ -99,5 +99,5 @@ jobs:
 
   pre-commit:
     name: pre-commit
-    if: ${{ (inputs.ros_distro == '' || inputs.ros_distro == 'all') && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     uses: ./.github/workflows/pre-commit.yml

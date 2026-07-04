@@ -1,0 +1,12 @@
+name: Self-check
+# Runs pre-commit against this repo's own files (workflow YAML, docs), dogfooding the
+# pre-commit.yml leaf workflow that every consumer repo gets via ci_orchestrator.yml.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  pre-commit:
+    uses: ./.github/workflows/pre-commit.yml
