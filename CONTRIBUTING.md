@@ -6,13 +6,28 @@ We encourage community contributions to this repository. Feel free to open an is
 
 Any contribution to this repository will be under the BSD License.
 
-## Testing changes
+## Tooling
 
-This repo has no CI of its own — it only ships workflow definitions. Before opening a pull request:
+Please make sure for any pull request that it passes the `pre-commit` checks (see Tooling section).
 
-1. Run a quick syntax check on any changed workflow file:
-   `python3 -c "import yaml; yaml.safe_load(open('path/to/file.yml'))"`.
-2. Actually dispatch a consumer workflow against your branch/commit and watch it run, e.g.
+### pre-commit
+
+The [pre-commit](https://pre-commit.com/) tool is used for running certain checks and formatters every time before a commit is done.
+Please use it on any pull requests for this repository. It also runs automatically in CI via `.github/workflows/self-check.yml`.
+
+__Installation:__
+
+`apt install pipx && pipx install pre-commit`. Open a new terminal afterwards.
+
+__Usage:__
+In the repository folder run: `pre-commit run --all`. This can be automated with `pre-commit install`, so all checks are run every time a commit is done.
+
+## Testing workflow changes
+
+Beyond `pre-commit` (which lints the YAML itself via `actionlint`), workflow *behavior* changes still
+need to be validated against a real consumer, since this repo has no build/test of its own:
+
+1. Actually dispatch a consumer workflow against your branch/commit and watch it run, e.g.
    `gh run watch <id> --repo Duatic/<consumer-repo> --exit-status`.
-3. When testing something version-sensitive, point the consumer's `uses:` at the exact commit SHA
+2. When testing something version-sensitive, point the consumer's `uses:` at the exact commit SHA
    first, confirm it works, then move a tag — don't debug against a moving tag.
