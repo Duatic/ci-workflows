@@ -111,3 +111,39 @@ jobs:
     name: pre-commit
     if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     uses: ./.github/workflows/pre-commit.yml
+
+  # Coalesces every leg's badge artifact into a single gist patch.
+  badges:
+    name: Publish status badges
+    needs: [prepare, primary, secondary]
+    if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download badge artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: badge-*
+          path: badges
+          merge-multiple: true
+
+      - name: Publish badges to gist
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ inputs.badge_gist_id }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(badges/*.json)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No badge artifacts found, nothing to publish."
+            exit 0
+          fi
+          payload=$(jq -n '{files:{}}')
+          for f in "${files[@]}"; do
+            payload=$(jq --arg n "$(basename "$f")" --rawfile c "$f" '.files[$n]={content:$c}' <<<"$payload")
+          done
+          curl -sSf -X PATCH \
+            -H "Authorization: Bearer ${GIST_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/gists/${GIST_ID}" \
+            -d "$payload" > /dev/null

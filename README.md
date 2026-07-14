@@ -113,9 +113,13 @@ renderer](https://shields.io/badges/endpoint-badge) then turns into a badge:
    [![Jazzy](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/<user>/<gist-id>/raw/<repo-name>-jazzy.json)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
    ```
 
-Badges are only written on pushes to `main` (matching the old `?branch=main` badge semantics) —
-pull request runs never touch them. A single gist can hold badges for multiple repos since the
-filename is namespaced per repo.
+Badges are only written on pushes to `main`. Each distro leg renders its own badge JSON and uploads it as an artifact; a `badges` job in the orchestrator downloads every leg's artifact and does a single multi-file gist PATCH per run.
+
+**Use a separate gist per repo**, even though the filename is namespaced (`<repo-name>-<distro>.json`)
+and would technically allow sharing one gist across repos. With ~20 repos on the same nightly
+cron, concurrent writers hitting the *same* gist trip GitHub's secondary (abuse) rate limit even
+after coalescing each repo down to one write. The abuse limit is sensitive to concurrent writes against
+one resource, not just total call volume.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
