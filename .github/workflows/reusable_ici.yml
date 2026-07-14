@@ -31,9 +31,17 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+      badge_gist_id:
+        description: 'Optional gist ID to publish a pass/fail status badge to. Empty (default) disables badge publishing. Only written on pushes to main.'
+        default: ''
+        required: false
+        type: string
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in the repos.list workspace file.'
+        required: false
+      GIST_TOKEN:
+        description: 'PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 jobs:
@@ -65,6 +73,7 @@ jobs:
           else
             echo "pip_install=" >> "$GITHUB_OUTPUT"
           fi
+
       - name: Cache ccache
         uses: actions/cache@v6
         with:
@@ -73,7 +82,10 @@ jobs:
           restore-keys: |
             ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}-${{ github.sha }}
             ccache-${{ inputs.ros_distro }}-${{ steps.detect.outputs.upstream_workspace }}-${{ inputs.ros_repo }}-${{ github.job }}
-      - uses: 'ros-industrial/industrial_ci@master'
+
+      - name: industrial_ci
+        id: ici
+        uses: 'ros-industrial/industrial_ci@master'
         env:
           UPSTREAM_WORKSPACE: ${{ steps.detect.outputs.upstream_workspace }}
           ROS_DISTRO: ${{ inputs.ros_distro }}
@@ -81,3 +93,27 @@ jobs:
           BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}
           AFTER_INSTALL_TARGET_DEPENDENCIES: ${{ steps.detect.outputs.pip_install }}
           BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}
+
+      - name: Write badge artifact
+        if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p badge
+          status="failing"
+          color="red"
+          if [ "${{ steps.ici.outcome }}" = "success" ]; then
+            status="passing"
+            color="brightgreen"
+          fi
+          cat > "badge/${{ github.event.repository.name }}-${{ inputs.ros_distro }}.json" <<EOF
+          {"schemaVersion":1,"label":"${{ inputs.ros_distro }}","message":"${status}","color":"${color}"}
+          EOF
+
+      - name: Upload badge artifact
+        if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-${{ inputs.ros_distro }}
+          path: badge/*.json
+          retention-days: 1

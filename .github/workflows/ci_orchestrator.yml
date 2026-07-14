@@ -24,9 +24,17 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+      badge_gist_id:
+        description: 'Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written on pushes to main.'
+        default: ''
+        required: false
+        type: string
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
+        required: false
+      GIST_TOKEN:
+        description: 'PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 concurrency:
@@ -80,6 +88,7 @@ jobs:
       ros_distro: ${{ matrix.ros_distro }}
       ros_repo: ${{ matrix.ros_repo }}
       runner: ${{ inputs.runner }}
+      badge_gist_id: ${{ inputs.badge_gist_id }}
     secrets: inherit
 
   secondary:
@@ -95,9 +104,46 @@ jobs:
       ros_distro: ${{ matrix.ros_distro }}
       ros_repo: ${{ matrix.ros_repo }}
       runner: ${{ inputs.runner }}
+      badge_gist_id: ${{ inputs.badge_gist_id }}
     secrets: inherit
 
   pre-commit:
     name: pre-commit
     if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     uses: ./.github/workflows/pre-commit.yml
+
+  # Coalesces every leg's badge artifact into a single gist patch.
+  badges:
+    name: Publish status badges
+    needs: [prepare, primary, secondary]
+    if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download badge artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: badge-*
+          path: badges
+          merge-multiple: true
+
+      - name: Publish badges to gist
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          GIST_ID: ${{ inputs.badge_gist_id }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          files=(badges/*.json)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No badge artifacts found, nothing to publish."
+            exit 0
+          fi
+          payload=$(jq -n '{files:{}}')
+          for f in "${files[@]}"; do
+            payload=$(jq --arg n "$(basename "$f")" --rawfile c "$f" '.files[$n]={content:$c}' <<<"$payload")
+          done
+          curl -sSf -X PATCH \
+            -H "Authorization: Bearer ${GIST_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/gists/${GIST_ID}" \
+            -d "$payload" > /dev/null
