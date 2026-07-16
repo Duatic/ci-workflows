@@ -102,10 +102,10 @@ jobs:
           mkdir -p badge
           status="failing"
           color="red"
-          if [ "${{ steps.ici.outcome }}" = "success" ]; then
-            status="passing"
-            color="brightgreen"
-          fi
+          case "${{ steps.ici.outcome }}" in
+            success)   status="passing";   color="brightgreen";;
+            cancelled) status="cancelled"; color="lightgrey";;
+          esac
           cat > "badge/${{ github.event.repository.name }}-${{ inputs.ros_distro }}.json" <<EOF
           {"schemaVersion":1,"label":"${{ inputs.ros_distro }}","message":"${status}","color":"${color}"}
           EOF

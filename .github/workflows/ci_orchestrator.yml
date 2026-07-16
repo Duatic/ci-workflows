@@ -126,6 +126,24 @@ jobs:
           path: badges
           merge-multiple: true
 
+      - name: Fill missing badges for legs that did not run
+        env:
+          PRIMARY: ${{ needs.prepare.outputs.primary }}
+          SECONDARY: ${{ needs.prepare.outputs.secondary }}
+          REPO: ${{ github.event.repository.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p badges
+          distros=$(jq -r -n --argjson p "$PRIMARY" --argjson s "$SECONDARY" \
+            '($p + $s)[].ros_distro')
+          for d in $distros; do
+            f="badges/${REPO}-${d}.json"
+            if [ ! -f "$f" ]; then
+              printf '{"schemaVersion":1,"label":"%s","message":"not run","color":"lightgrey"}\n' \
+                "$d" > "$f"
+            fi
+          done
+
       - name: Publish badges to gist
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
