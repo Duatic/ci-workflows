@@ -20,7 +20,7 @@ on:
         required: false
         type: string
       runner:
-        description: 'Runner label(s) to run the build jobs on, e.g. "ubuntu-latest" or "self-hosted".'
+        description: 'Runner label(s) to run all jobs on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
         required: false
         type: string
@@ -45,7 +45,7 @@ jobs:
   draft_guard:
     name: Draft PR - CI skipped
     if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       - name: Fail fast on draft PRs
         run: |
@@ -55,7 +55,7 @@ jobs:
   prepare:
     name: Plan distro matrix
     if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     outputs:
       primary: ${{ steps.plan.outputs.primary }}
       secondary: ${{ steps.plan.outputs.secondary }}
@@ -111,13 +111,15 @@ jobs:
     name: pre-commit
     if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     uses: ./.github/workflows/pre-commit.yml
+    with:
+      runner: ${{ inputs.runner }}
 
   # Coalesces every leg's badge artifact into a single gist patch.
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
     if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
         uses: actions/download-artifact@v4
