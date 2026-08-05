@@ -21,9 +21,13 @@ GitHub Release with auto-generated notes.
 
 ## What consumers call
 
-Repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO` channel
-per distro, gating, concurrency, and the draft-PR policy, and internally drives the two leaf
+For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO`
+channel per distro, gating, concurrency, and the draft-PR policy, and internally drives the two leaf
 workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference directly.
+
+**`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
+Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
+never runs on its own. See [Claude code review](#claude-code-review-claude_reviewyml).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -121,6 +125,42 @@ cron, concurrent writers hitting the *same* gist trip GitHub's secondary (abuse)
 after coalescing each repo down to one write. The abuse limit is sensitive to concurrent writes against
 one resource, not just total call volume.
 
+## Claude code review
+
+Comment this on any open pull request:
+
+```
+@claude review
+```
+
+A Claude code review runs against that PR and posts its findings as inline comments on the
+lines it has something to say about, plus a summary comment. It's the same reviewer as the
+`/code-review` command in the Claude Code CLI, so findings are calibrated the same way as
+what you see locally.
+
+Nothing about the request is configurable. The comment takes no arguments, and the workflow
+fixes the model to `opus` and the review depth to `medium` effort. `medium` reports only the
+findings the reviewer is confident in, which keeps false positives low.
+
+**Reviews are never automatic.** They only run when someone asks, so no PR costs anything
+unless a developer wants a review on it. Each run posts a collapsed *Claude review run
+details* comment with what Claude Code recorded for it. Note that the
+dollar figure is computed locally from token counts at list rates: on subscription auth it's what the review *would* have cost on the API, not a charge.
+
+**The review can only read.** The job's token gets `contents: read`, and Claude is given no
+`Edit`, `Write`, or `Bash` tools, so a review cannot modify code, commit, or open a PR.
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `runner` | no | `self-hosted` | Runner label(s) to run the review on, e.g. `ubuntu-latest`. |
+
+| Secret | Required | Description |
+|---|---|---|
+| `CLAUDE_CODE_OAUTH_TOKEN` | one of | Claude subscription token from `claude setup-token`. Usage draws on that account's plan allowance. |
+| `ANTHROPIC_API_KEY` | one of | Claude API key. Billed per token to the Console organization instead. |
+
+Set whichever one you want as a repo secret. If both are set, the API key wins.
+
 ## Leaf workflows (internal, not called directly by product repos)
 
 - **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
@@ -129,3 +169,4 @@ one resource, not just total call volume.
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
+- Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.

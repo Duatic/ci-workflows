@@ -1,0 +1,111 @@
+name: Claude review
+# Runs a Claude code review on a pull request, when someone comments "@claude review" on it.
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/claude_review.yml@v1
+#
+# Owns everything that shouldn't be re-decided per repo:
+#   - the trigger phrase and the guard that keeps ordinary PR chatter from starting a runner
+#   - the model and review depth (opus / medium effort) - deliberately not configurable
+#   - review-only enforcement: the job token cannot push and Claude gets no write tools
+#   - auto-cancelling a superseded review on the same PR
+#
+# Consumers only choose their runner, and supply an ANTHROPIC_API_KEY secret.
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'self-hosted'
+        required: false
+        type: string
+    secrets:
+      # Supply exactly one of these as a repo secret and pass via `secrets: inherit`.
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: 'Claude subscription token from `claude setup-token` (valid 1 year). Usage draws on that account''s plan allowance rather than being billed per token.'
+        required: false
+      ANTHROPIC_API_KEY:
+        description: 'Claude API key. Alternative to CLAUDE_CODE_OAUTH_TOKEN; billed per token to the Console organization.'
+        required: false
+
+concurrency:
+  # A second request on the same PR supersedes an in-flight review of it.
+  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    name: Review
+    # Only fire for a PR comment that starts with the trigger phrase.
+    if: >-
+      github.event.issue.pull_request &&
+      startsWith(github.event.comment.body, '@claude review')
+    runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read # review-only: the job token cannot push
+      pull-requests: write # ...but it can comment
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 1
+
+      - id: claude
+        uses: anthropics/claude-code-action@v1
+        with:
+          # Whichever of the two the consumer repo has set; the other is empty and ignored.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          track_progress: true
+          use_sticky_comment: true
+          plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
+          plugins: 'code-review@claude-code-plugins'
+          prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.issue.number }}'
+          # `medium` effort reports only the findings the reviewer is confident in, which
+          # keeps false positives low. --allowedTools deliberately omits Edit/Write/Bash:
+          # combined with `contents: read` above, there is no path to changing the code.
+          claude_args: |
+            --model opus
+            --effort medium
+            --max-turns 20
+            --allowedTools "Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment,mcp__github_comment__*"
+
+      - name: Report run details
+        if: always()
+        uses: actions/github-script@v9
+        env:
+          EXECUTION_FILE: ${{ steps.claude.outputs.execution_file }}
+        with:
+          script: |
+            const fs = require('fs');
+            const file = process.env.EXECUTION_FILE;
+            if (!file || !fs.existsSync(file)) {
+              core.info('No execution file produced - nothing to report.');
+              return;
+            }
+            let stats;
+            try {
+              const log = JSON.parse(fs.readFileSync(file, 'utf8'));
+              const last = Array.isArray(log) ? log[log.length - 1] : log;
+              // Report whatever Claude Code recorded for the run (cost, tokens, duration,
+              // turns, ...), minus `result` - that's the review prose, already posted above.
+              const { result, ...rest } = last ?? {};
+              stats = rest;
+            } catch (error) {
+              core.info(`Could not parse execution file: ${error.message}`);
+              return;
+            }
+            const body = [
+              '<details><summary>Claude review run details</summary>',
+              '',
+              '```json',
+              JSON.stringify(stats, null, 2),
+              '```',
+              '',
+              '</details>',
+            ].join('\n');
+            await core.summary.addRaw(body).write();
+            await github.rest.issues.createComment({
+              ...context.repo,
+              issue_number: context.issue.number,
+              body,
+            });
