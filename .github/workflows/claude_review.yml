@@ -24,9 +24,13 @@ on:
         required: false
         type: string
     secrets:
+      # Supply exactly one of these as a repo secret and pass via `secrets: inherit`.
+      CLAUDE_CODE_OAUTH_TOKEN:
+        description: 'Claude subscription token from `claude setup-token` (valid 1 year). Usage draws on that account''s plan allowance rather than being billed per token.'
+        required: false
       ANTHROPIC_API_KEY:
-        description: 'Claude API key used for the review. Set as a repo secret; pass via `secrets: inherit`.'
-        required: true
+        description: 'Claude API key. Alternative to CLAUDE_CODE_OAUTH_TOKEN; billed per token to the Console organization.'
+        required: false
 
 concurrency:
   # A second request on the same PR supersedes an in-flight review of it.
@@ -54,6 +58,8 @@ jobs:
       - id: claude
         uses: anthropics/claude-code-action@v1
         with:
+          # Whichever of the two the consumer repo has set; the other is empty and ignored.
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
           use_sticky_comment: true

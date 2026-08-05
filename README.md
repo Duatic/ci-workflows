@@ -145,7 +145,9 @@ findings the reviewer is confident in, which keeps false positives low.
 **Reviews are never automatic.** They only run when someone asks, so no PR costs anything
 unless a developer wants a review on it. Each run posts a collapsed *Claude review run
 details* comment with what Claude Code recorded for it - cost, tokens, duration, turns - so
-the requester can see the price. The same block lands in the job summary.
+the requester can see the price. The same block lands in the job summary. Note that the
+dollar figure is computed locally from token counts at list rates: on subscription auth
+(below) it's what the review *would* have cost on the API, not a charge.
 
 **The review can only read.** The job's token gets `contents: read`, and Claude is given no
 `Edit`, `Write`, or `Bash` tools, so a review cannot modify code, commit, or open a PR - it
@@ -158,13 +160,26 @@ would need a separate workflow, deliberately not built yet.
 
 | Secret | Required | Description |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | yes | Claude API key. Pass via `secrets: inherit`. |
+| `CLAUDE_CODE_OAUTH_TOKEN` | one of | Claude subscription token from `claude setup-token`. Usage draws on that account's plan allowance. |
+| `ANTHROPIC_API_KEY` | one of | Claude API key. Billed per token to the Console organization instead. |
+
+Set whichever one you want as a repo secret; the workflow passes both through and ignores the
+empty one. If both are set, the API key wins.
 
 ### Enabling it on a repo
 
-1. Add an `ANTHROPIC_API_KEY` **repo** secret (Settings -> Secrets and variables -> Actions).
-   There's no org secret for this - org secrets need a GitHub business plan - so **every repo
-   needs its own copy**.
+1. Add **one** of the two secrets above as a **repo** secret (Settings -> Secrets and
+   variables -> Actions). There's no org secret for either - org secrets need a GitHub
+   business plan - so **every repo needs its own copy**.
+
+   For `CLAUDE_CODE_OAUTH_TOKEN`, run `claude setup-token` locally while logged into a Claude
+   Pro/Max/Team/Enterprise account. It prints a token valid for one year and doesn't store it
+   anywhere, so copy it straight into the secret. Reviews then consume that account's plan
+   allowance - its rolling 5-hour and weekly windows, shared with that person's own Claude
+   Code and Claude chat usage - rather than being billed per token. Two consequences worth
+   planning around: whoever minted the token is effectively funding every review in the repo,
+   and once their window is exhausted review jobs fail until it resets. Set a calendar
+   reminder to rotate the token before it expires.
 2. Add this as `.github/workflows/claude.yml`. It's the entire file:
 
    ```yaml
@@ -203,4 +218,4 @@ self-hosted runner slots. A second request on a PR cancels an in-flight review o
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
-- Repos opting into `claude_review.yml` must have their own `ANTHROPIC_API_KEY` repo secret and pass `secrets: inherit`.
+- Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
