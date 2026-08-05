@@ -67,12 +67,13 @@ jobs:
       - id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          # Post as github-actions[bot] rather than claude[bot]. Left to itself the action
-          # trades its OIDC token for a Claude App installation token, and comments made with
-          # an App token DO start new workflow runs - GitHub only suppresses re-triggering for
-          # a workflow's own GITHUB_TOKEN. So the progress comment would start a second run of
-          # this workflow on every review. Passing github_token short-circuits that exchange.
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Deliberately NOT passing github_token: letting the action trade its OIDC token for
+          # a Claude App installation token is what makes reviews post as claude[bot] rather
+          # than github-actions[bot], and would let a future fix mode's commits trigger CI
+          # (GitHub suppresses workflow runs for commits made with GITHUB_TOKEN). The price is
+          # that Claude's progress comment starts one extra, skipped run of this workflow per
+          # review - harmless, see the concurrency note above.
+          #
           # Whichever of the two the consumer repo has set; the other is empty and ignored.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

@@ -168,18 +168,18 @@ starts a run of this workflow, which then skips unless the comment is a genuine 
 Skipped runs consume no runner time, and there is no way to suppress them while keeping a
 comment-driven trigger.
 
-Two consequences are load-bearing, and both look like clutter worth "cleaning up" until you
-know why they're there:
+One of those skipped runs is Claude's own doing: it posts its progress comment as
+`claude[bot]`, using a Claude App installation token, and comments made with an App token
+*do* start new workflow runs - GitHub only suppresses re-triggering for a workflow's own
+`GITHUB_TOKEN`. Passing `github_token: ${{ secrets.GITHUB_TOKEN }}` to the action would
+remove that one run, but reviews would then post as `github-actions[bot]`, and a future
+fix mode's commits would no longer trigger CI. Not worth it while skipped runs happen anyway.
 
-- **The `concurrency` group falls back to `github.run_id`** for anything that isn't a genuine
-  request. `concurrency` is evaluated at run level, *before* the job's `if:` - so with a group
-  keyed on the PR number alone, a colleague commenting "LGTM" while a review was running would
-  cancel that review.
-- **`github_token: ${{ secrets.GITHUB_TOKEN }}` is passed to the action deliberately.** Left to
-  itself it would use a Claude App installation token, and comments posted with an App token
-  *do* start new workflow runs, so Claude's own progress comment would start a second run on
-  every review. The cost of passing it is cosmetic: reviews post as `github-actions[bot]`
-  rather than `claude[bot]`.
+That makes the **`concurrency` group's fallback to `github.run_id`** load-bearing, and it
+looks like clutter worth "cleaning up" until you know why it's there: `concurrency` is
+evaluated at run level, *before* the job's `if:`. With a group keyed on the PR number alone,
+Claude's own progress comment - or a colleague commenting "LGTM" - while a review was running
+would cancel that review.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
