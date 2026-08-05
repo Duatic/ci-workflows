@@ -27,7 +27,7 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 
 **`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
-never runs on its own. See [Claude code review](#claude-code-review-claude_reviewyml).
+never runs on its own. See [Claude code review](#claude-code-review).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -160,6 +160,14 @@ dollar figure is computed locally from token counts at list rates: on subscripti
 | `ANTHROPIC_API_KEY` | one of | Claude API key. Billed per token to the Console organization instead. |
 
 Set whichever one you want as a repo secret. If both are set, the API key wins.
+
+**Each review produces a second workflow run that shows as skipped - that's expected.**
+Claude's progress comment fires `issue_comment` again (it's posted with the Claude App's
+token, and GitHub only suppresses re-triggering for a workflow's own `GITHUB_TOKEN`), so a
+run is created and its job then skips. It costs no runner time. This is also why the
+`concurrency` group falls back to `github.run_id` for anything that isn't a genuine request:
+`concurrency` is evaluated before the job's `if:`, so simplifying that group back to just the
+PR number makes every review cancel itself ~30s in.
 
 ## Leaf workflows (internal, not called directly by product repos)
 

@@ -8,7 +8,7 @@ name: Claude review
 #   - review-only enforcement: the job token cannot push and Claude gets no write tools
 #   - auto-cancelling a superseded review on the same PR
 #
-# Consumers only choose their runner, and supply an ANTHROPIC_API_KEY secret.
+# Consumers only choose their runner, and supply one of the two auth secrets below.
 
 on:
   workflow_call:
@@ -28,16 +28,32 @@ on:
         required: false
 
 concurrency:
-  # A second request on the same PR supersedes an in-flight review of it.
-  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.event.issue.number }}
+  # A second request on the same PR supersedes an in-flight review of it - but ONLY genuine
+  # requests may share that per-PR group. Everything else keys on the unique run id.
+  #
+  # Claude's own progress comment fires `issue_comment` again: it's posted with the Claude
+  # App's installation token, and GitHub only suppresses re-triggering for a workflow's own
+  # GITHUB_TOKEN. `concurrency` is evaluated at run level, BEFORE the job's `if:` below - so
+  # with a group keyed on the PR alone, that second run cancels the very review it is
+  # reporting on, ~30s in, every single time.
+  # (Continuation lines are kept at one indent level so the folded scalar collapses to a
+  # single line - a newline inside the `${{ }}` would be relying on luck.)
+  group: >-
+    ${{ github.workflow }}-${{ github.repository }}-${{
+    (github.event.comment.user.type != 'Bot'
+    && startsWith(github.event.comment.body, '@claude review'))
+    && github.event.issue.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
   review:
     name: Review
-    # Only fire for a PR comment that starts with the trigger phrase.
+    # Only fire for a PR comment that starts with the trigger phrase. Rejecting Bot authors
+    # is belt-and-braces: it forecloses a loop should Claude ever open a comment with the
+    # trigger phrase (e.g. quoting the request back), and keeps other bots out of the path.
     if: >-
       github.event.issue.pull_request &&
+      github.event.comment.user.type != 'Bot' &&
       startsWith(github.event.comment.body, '@claude review')
     runs-on: ${{ inputs.runner }}
     permissions:
