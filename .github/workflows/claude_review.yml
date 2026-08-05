@@ -19,24 +19,17 @@ on:
         required: false
         type: string
     secrets:
-      # Supply exactly one of these as a repo secret and pass via `secrets: inherit`.
+      # Only one of these is needed
       CLAUDE_CODE_OAUTH_TOKEN:
-        description: 'Claude subscription token from `claude setup-token` (valid 1 year). Usage draws on that account''s plan allowance rather than being billed per token.'
+        description: 'Claude subscription token from `claude setup-token`. Usage draws on that account''s plan allowance..'
         required: false
       ANTHROPIC_API_KEY:
-        description: 'Claude API key. Alternative to CLAUDE_CODE_OAUTH_TOKEN; billed per token to the Console organization.'
+        description: 'Claude API key. Billed per token to the organization.'
         required: false
 
 concurrency:
-  # A second request on the same PR supersedes an in-flight review of it - but ONLY genuine
-  # requests may share that per-PR group. Everything else keys on the unique run id.
-  #
-  # This matters because `issue_comment` fires for EVERY comment on a PR, so every comment
-  # starts a run of this workflow, and `concurrency` is evaluated at run level BEFORE the
-  # job's `if:` below gets to skip it. Keyed on the PR alone, a colleague posting "LGTM"
-  # while a review is running would cancel that review.
-  # (Continuation lines are kept at one indent level so the folded scalar collapses to a
-  # single line - a newline inside the `${{ }}` would be relying on luck.)
+  # issue_comment` fires for EVERY comment on a PR, so every comment starts a run of this workflow
+  # thus we need to filter for genuine requests rather than applying concurrency on every comment
   group: >-
     ${{ github.workflow }}-${{ github.repository }}-${{
     (github.event.comment.user.type != 'Bot'
@@ -47,9 +40,7 @@ concurrency:
 jobs:
   review:
     name: Review
-    # Only fire for a PR comment that starts with the trigger phrase. Rejecting Bot authors
-    # is belt-and-braces: it forecloses a loop should Claude ever open a comment with the
-    # trigger phrase (e.g. quoting the request back), and keeps other bots out of the path.
+    # Only fire for a PR comment that starts with the trigger phrase.
     if: >-
       github.event.issue.pull_request &&
       github.event.comment.user.type != 'Bot' &&
@@ -67,14 +58,7 @@ jobs:
       - id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          # Deliberately NOT passing github_token: letting the action trade its OIDC token for
-          # a Claude App installation token is what makes reviews post as claude[bot] rather
-          # than github-actions[bot], and would let a future fix mode's commits trigger CI
-          # (GitHub suppresses workflow runs for commits made with GITHUB_TOKEN). The price is
-          # that Claude's progress comment starts one extra, skipped run of this workflow per
-          # review - harmless, see the concurrency note above.
-          #
-          # Whichever of the two the consumer repo has set; the other is empty and ignored.
+          # Use whichever token of the two that is set; the other is empty and ignored.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true

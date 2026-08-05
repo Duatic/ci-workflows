@@ -161,26 +161,6 @@ dollar figure is computed locally from token counts at list rates: on subscripti
 
 Set whichever one you want as a repo secret. If both are set, the API key wins.
 
-### Why you see skipped runs of this workflow
-
-`issue_comment` has no way to filter on comment text, so **every** comment on a PR or issue
-starts a run of this workflow, which then skips unless the comment is a genuine request.
-Skipped runs consume no runner time, and there is no way to suppress them while keeping a
-comment-driven trigger.
-
-One of those skipped runs is Claude's own doing: it posts its progress comment as
-`claude[bot]`, using a Claude App installation token, and comments made with an App token
-*do* start new workflow runs - GitHub only suppresses re-triggering for a workflow's own
-`GITHUB_TOKEN`. Passing `github_token: ${{ secrets.GITHUB_TOKEN }}` to the action would
-remove that one run, but reviews would then post as `github-actions[bot]`, and a future
-fix mode's commits would no longer trigger CI. Not worth it while skipped runs happen anyway.
-
-That makes the **`concurrency` group's fallback to `github.run_id`** load-bearing, and it
-looks like clutter worth "cleaning up" until you know why it's there: `concurrency` is
-evaluated at run level, *before* the job's `if:`. With a group keyed on the PR number alone,
-Claude's own progress comment - or a colleague commenting "LGTM" - while a review was running
-would cancel that review.
-
 ## Leaf workflows (internal, not called directly by product repos)
 
 - **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
