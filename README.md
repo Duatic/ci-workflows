@@ -21,9 +21,13 @@ GitHub Release with auto-generated notes.
 
 ## What consumers call
 
-Repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO` channel
-per distro, gating, concurrency, and the draft-PR policy, and internally drives the two leaf
+For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO`
+channel per distro, gating, concurrency, and the draft-PR policy, and internally drives the two leaf
 workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference directly.
+
+**`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
+Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
+never runs on its own. See [Claude code review](#claude-code-review-claude_reviewyml).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -121,6 +125,76 @@ cron, concurrent writers hitting the *same* gist trip GitHub's secondary (abuse)
 after coalescing each repo down to one write. The abuse limit is sensitive to concurrent writes against
 one resource, not just total call volume.
 
+## Claude code review (`claude_review.yml`)
+
+Comment this on any open pull request:
+
+```
+@claude review
+```
+
+A Claude code review runs against that PR and posts its findings as inline comments on the
+lines it has something to say about, plus a summary comment. It's the same reviewer as the
+`/code-review` command in the Claude Code CLI, so findings are calibrated the same way as
+what you see locally.
+
+Nothing about the request is configurable - the comment takes no arguments, and the workflow
+fixes the model to `opus` and the review depth to `medium` effort. `medium` reports only the
+findings the reviewer is confident in, which keeps false positives low.
+
+**Reviews are never automatic.** They only run when someone asks, so no PR costs anything
+unless a developer wants a review on it. Each run posts a collapsed *Claude review run
+details* comment with what Claude Code recorded for it - cost, tokens, duration, turns - so
+the requester can see the price. The same block lands in the job summary.
+
+**The review can only read.** The job's token gets `contents: read`, and Claude is given no
+`Edit`, `Write`, or `Bash` tools, so a review cannot modify code, commit, or open a PR - it
+comments and nothing else. Asking Claude to fix something in the comment won't work; that
+would need a separate workflow, deliberately not built yet.
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `runner` | no | `self-hosted` | Runner label(s) to run the review on, e.g. `ubuntu-latest`. |
+
+| Secret | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | yes | Claude API key. Pass via `secrets: inherit`. |
+
+### Enabling it on a repo
+
+1. Add an `ANTHROPIC_API_KEY` **repo** secret (Settings -> Secrets and variables -> Actions).
+   There's no org secret for this - org secrets need a GitHub business plan - so **every repo
+   needs its own copy**.
+2. Add this as `.github/workflows/claude.yml`. It's the entire file:
+
+   ```yaml
+   name: Claude review
+   on:
+     issue_comment:
+       types: [created]
+
+   jobs:
+     claude:
+       uses: Duatic/ci-workflows/.github/workflows/claude_review.yml@v1
+       permissions:
+         contents: read
+         pull-requests: write
+         id-token: write
+       secrets: inherit
+   ```
+
+   `permissions` is spelled out because a reusable workflow can only ever *reduce* the
+   caller's token permissions, never raise them - so this works regardless of the org default
+   for `GITHUB_TOKEN`.
+
+3. **Merge it to the default branch.** GitHub only runs `issue_comment` workflows from the
+   version of the file on the default branch, so `@claude review` does nothing on any PR
+   until this file is on `main` - including on the PR that adds it.
+
+Comments that don't start with `@claude review`, and `@claude review` on a plain issue rather
+than a PR, are filtered before a runner starts, so ordinary chatter never occupies one of the
+self-hosted runner slots. A second request on a PR cancels an in-flight review of it.
+
 ## Leaf workflows (internal, not called directly by product repos)
 
 - **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
@@ -129,3 +203,4 @@ one resource, not just total call volume.
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
+- Repos opting into `claude_review.yml` must have their own `ANTHROPIC_API_KEY` repo secret and pass `secrets: inherit`.
