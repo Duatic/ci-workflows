@@ -1,6 +1,5 @@
 name: Claude review
-# Central, org-wide reusable workflow that runs a Claude code review on a pull request,
-# on demand, when someone comments "@claude review" on it.
+# Runs a Claude code review on a pull request, when someone comments "@claude review" on it.
 # Consumers: uses: Duatic/ci-workflows/.github/workflows/claude_review.yml@v1
 #
 # Owns everything that shouldn't be re-decided per repo:
@@ -10,10 +9,6 @@ name: Claude review
 #   - auto-cancelling a superseded review on the same PR
 #
 # Consumers only choose their runner, and supply an ANTHROPIC_API_KEY secret.
-#
-# Reviews are never automatic - nothing runs until a developer asks for one, so review
-# cost is only ever incurred on request. The run's own accounting (cost, tokens, duration)
-# is posted back onto the PR so the requester sees what it cost.
 
 on:
   workflow_call:
@@ -40,8 +35,7 @@ concurrency:
 jobs:
   review:
     name: Review
-    # `issue_comment` also fires for plain issues, hence the `issue.pull_request` check.
-    # Gating here rather than inside the job means normal PR comments never occupy a runner.
+    # Only fire for a PR comment that starts with the trigger phrase.
     if: >-
       github.event.issue.pull_request &&
       startsWith(github.event.comment.body, '@claude review')
@@ -63,8 +57,6 @@ jobs:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true
           use_sticky_comment: true
-          # The same reviewer as the `/code-review` command in the Claude Code CLI, so
-          # findings are calibrated identically to what developers see locally.
           plugin_marketplaces: 'https://github.com/anthropics/claude-code.git'
           plugins: 'code-review@claude-code-plugins'
           prompt: '/code-review:code-review ${{ github.repository }}/pull/${{ github.event.issue.number }}'
@@ -78,7 +70,6 @@ jobs:
             --allowedTools "Read,Grep,Glob,mcp__github_inline_comment__create_inline_comment,mcp__github_comment__*"
 
       - name: Report run details
-        # `always()`: a failed review still burned tokens, so still report what it recorded.
         if: always()
         uses: actions/github-script@v9
         env:
