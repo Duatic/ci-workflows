@@ -8,7 +8,7 @@ name: Claude review
 #   - review-only enforcement: the job token cannot push and Claude gets no write tools
 #   - auto-cancelling a superseded review on the same PR
 #
-# Consumers only choose their runner, and supply an ANTHROPIC_API_KEY secret.
+# Consumers only choose their runner, and supply one of the two auth secrets below.
 
 on:
   workflow_call:
@@ -19,17 +19,22 @@ on:
         required: false
         type: string
     secrets:
-      # Supply exactly one of these as a repo secret and pass via `secrets: inherit`.
+      # Only one of these is needed
       CLAUDE_CODE_OAUTH_TOKEN:
-        description: 'Claude subscription token from `claude setup-token` (valid 1 year). Usage draws on that account''s plan allowance rather than being billed per token.'
+        description: 'Claude subscription token from `claude setup-token`. Usage draws on that account''s plan allowance..'
         required: false
       ANTHROPIC_API_KEY:
-        description: 'Claude API key. Alternative to CLAUDE_CODE_OAUTH_TOKEN; billed per token to the Console organization.'
+        description: 'Claude API key. Billed per token to the organization.'
         required: false
 
 concurrency:
-  # A second request on the same PR supersedes an in-flight review of it.
-  group: ${{ github.repository }}-${{ github.workflow }}-${{ github.event.issue.number }}
+  # issue_comment` fires for EVERY comment on a PR, so every comment starts a run of this workflow
+  # thus we need to filter for genuine requests rather than applying concurrency on every comment
+  group: >-
+    ${{ github.workflow }}-${{ github.repository }}-${{
+    (github.event.comment.user.type != 'Bot'
+    && startsWith(github.event.comment.body, '@claude review'))
+    && github.event.issue.number || github.run_id }}
   cancel-in-progress: true
 
 jobs:
@@ -38,6 +43,7 @@ jobs:
     # Only fire for a PR comment that starts with the trigger phrase.
     if: >-
       github.event.issue.pull_request &&
+      github.event.comment.user.type != 'Bot' &&
       startsWith(github.event.comment.body, '@claude review')
     runs-on: ${{ inputs.runner }}
     permissions:
@@ -52,7 +58,7 @@ jobs:
       - id: claude
         uses: anthropics/claude-code-action@v1
         with:
-          # Whichever of the two the consumer repo has set; the other is empty and ignored.
+          # Use whichever token of the two that is set; the other is empty and ignored.
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           track_progress: true

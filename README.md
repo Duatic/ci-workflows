@@ -27,7 +27,7 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 
 **`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
-never runs on its own. See [Claude code review](#claude-code-review-claude_reviewyml).
+never runs on its own. See [Claude code review](#claude-code-review).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
