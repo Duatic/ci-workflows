@@ -161,13 +161,25 @@ dollar figure is computed locally from token counts at list rates: on subscripti
 
 Set whichever one you want as a repo secret. If both are set, the API key wins.
 
-**Each review produces a second workflow run that shows as skipped - that's expected.**
-Claude's progress comment fires `issue_comment` again (it's posted with the Claude App's
-token, and GitHub only suppresses re-triggering for a workflow's own `GITHUB_TOKEN`), so a
-run is created and its job then skips. It costs no runner time. This is also why the
-`concurrency` group falls back to `github.run_id` for anything that isn't a genuine request:
-`concurrency` is evaluated before the job's `if:`, so simplifying that group back to just the
-PR number makes every review cancel itself ~30s in.
+### Why you see skipped runs of this workflow
+
+`issue_comment` has no way to filter on comment text, so **every** comment on a PR or issue
+starts a run of this workflow, which then skips unless the comment is a genuine request.
+Skipped runs consume no runner time, and there is no way to suppress them while keeping a
+comment-driven trigger.
+
+Two consequences are load-bearing, and both look like clutter worth "cleaning up" until you
+know why they're there:
+
+- **The `concurrency` group falls back to `github.run_id`** for anything that isn't a genuine
+  request. `concurrency` is evaluated at run level, *before* the job's `if:` - so with a group
+  keyed on the PR number alone, a colleague commenting "LGTM" while a review was running would
+  cancel that review.
+- **`github_token: ${{ secrets.GITHUB_TOKEN }}` is passed to the action deliberately.** Left to
+  itself it would use a Claude App installation token, and comments posted with an App token
+  *do* start new workflow runs, so Claude's own progress comment would start a second run on
+  every review. The cost of passing it is cosmetic: reviews post as `github-actions[bot]`
+  rather than `claude[bot]`.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
