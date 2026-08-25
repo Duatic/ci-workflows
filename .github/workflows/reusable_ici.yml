@@ -90,10 +90,7 @@ jobs:
           UPSTREAM_WORKSPACE: ${{ steps.detect.outputs.upstream_workspace }}
           ROS_DISTRO: ${{ inputs.ros_distro }}
           ROS_REPO: ${{ inputs.ros_repo }}
-          # industrial_ci does not forward RMW_IMPLEMENTATION into the build container
-          # (it is absent from its docker.env), so the selection rides in on DOCKER_RUN_OPTS.
-          # The matching deb goes through ADDITIONAL_DEBS, which is installed right after
-          # the ROS apt source is set up and fails the job if the package does not exist.
+          # Install CycloneDDS as the RMW implementation
           ADDITIONAL_DEBS: ros-${{ inputs.ros_distro }}-rmw-cyclonedds-cpp
           DOCKER_RUN_OPTS: -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
           BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}

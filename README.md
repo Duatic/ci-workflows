@@ -92,33 +92,6 @@ jobs:
     secrets: inherit
 ```
 
-## Middleware (RMW)
-
-CI builds and tests on **`rmw_cyclonedds_cpp`**, the middleware Duatic deploys. Before this was
-pinned, every job silently inherited whatever RMW its distro defaults to (Fast DDS), so CI was
-green against a middleware nobody ships. Pinning it closes that gap: a passing build now says
-something about the configuration that actually runs on a robot.
-
-The gap surfaced as a flake rather than as an obvious hole. The kilted leg of `duatic_duarover`
-failed 10 of 20 identical nightly runs on the same `main` commit, always in the same Nav2 sim
-test, always burning the full waypoint timeout because a service or action response was dropped
-on the way back. Only failing runs logged `failed to send response ... rmw_response.cpp`, a Fast
-DDS message, and only kilted (Fast DDS 3.x) was affected. Jazzy, on the 2.x line, was 6/6 green.
-
-Two pieces have to line up, because naming an RMW that is not installed is a hard failure at node
-startup rather than a fallback:
-
-- **Installed** via industrial_ci's `ADDITIONAL_DEBS` as `ros-<distro>-rmw-cyclonedds-cpp`, which
-  is applied right after the ROS apt source is configured and fails the job if the package is
-  missing.
-- **Selected** via `RMW_IMPLEMENTATION` inside the container. A job-level `env:` is not enough:
-  industrial_ci runs the build in Docker and only forwards the variables listed in its
-  `docker.env`, which does not include `RMW_IMPLEMENTATION`. It is passed through
-  `DOCKER_RUN_OPTS: -e RMW_IMPLEMENTATION=...` instead.
-
-Both are hardcoded side by side in the `industrial_ci` step of `reusable_ici.yml`, so every repo
-gets the same middleware and the two cannot drift apart.
-
 ## Status badges for private repos (opt-in, gist-backed)
 
 GitHub's native workflow `badge.svg` reports at the workflow-**file** level, so it can't show
