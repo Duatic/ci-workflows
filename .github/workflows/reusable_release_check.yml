@@ -14,6 +14,11 @@ name: release check
 on:
   workflow_call:
     inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
       devtools_ref:
         description: 'Which duatic_devtools revision to check against. Pin to hold a repository to a known set of rules.'
         default: 'main'
@@ -22,7 +27,7 @@ on:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       # The check compares against the merge base, so it needs history rather than a shallow clone.
       - uses: actions/checkout@v4
