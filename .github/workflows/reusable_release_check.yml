@@ -1,0 +1,52 @@
+name: release check
+# Central, org-wide reusable workflow. Asserts that a pull request is internally consistent about
+# what it releases: the package.xml version, the CHANGELOG.rst section and the PR title must agree.
+#
+# The logic lives in Duatic/duatic_devtools (release/check_release_pr.py) so that changing what a
+# release means is one commit there rather than one per repository. This file is the thin half.
+#
+# Called by a product repository as:
+#
+#   jobs:
+#     release-check:
+#       uses: Duatic/ci-workflows/.github/workflows/reusable_release_check.yml@main
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+      devtools_ref:
+        description: 'Which duatic_devtools revision to check against. Pin to hold a repository to a known set of rules.'
+        default: 'main'
+        required: false
+        type: string
+
+jobs:
+  check:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # The check compares against the merge base, so it needs history rather than a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Duatic/duatic_devtools
+          ref: ${{ inputs.devtools_ref }}
+          path: .devtools
+
+      - name: Version, changelog and title must agree
+        env:
+          # From the event rather than the ref: a pull request's title is not in the git history,
+          # and it is one of the three things being compared.
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --quiet origin "$BASE"
+          python3 .devtools/release/check_release_pr.py \
+            --base "origin/$BASE" --head HEAD --title "$PR_TITLE"
