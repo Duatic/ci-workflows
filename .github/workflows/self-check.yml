@@ -1,6 +1,7 @@
 name: Self-check
 # Runs pre-commit against this repo's own files (workflow YAML, docs), dogfooding the
-# pre-commit.yml leaf workflow that every consumer repo gets via ci_orchestrator.yml.
+# pre-commit.yml leaf workflow that every consumer repo gets via ci_orchestrator.yml, and runs the
+# suite for the release checks in release/.
 
 on:
   pull_request:
@@ -10,3 +11,17 @@ on:
 jobs:
   pre-commit:
     uses: ./.github/workflows/pre-commit.yml
+    with:
+      devtools_ref: main
+
+  release-checks:
+    name: release checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python syntax
+        run: python3 -m py_compile release/*.py
+
+      - name: Release check suite
+        run: release/test_check_release_pr.sh

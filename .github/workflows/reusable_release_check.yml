@@ -2,8 +2,8 @@ name: release check
 # Central, org-wide reusable workflow. Asserts that a pull request is internally consistent about
 # what it releases: the package.xml version, the CHANGELOG.rst section and the PR title must agree.
 #
-# The logic lives in Duatic/duatic_devtools (release/check_release_pr.py) so that changing what a
-# release means is one commit there rather than one per repository. This file is the thin half.
+# The checks live in this repository under release/, so changing what a release means is one commit
+# here rather than one per repository.
 #
 # Called by a product repository as:
 #
@@ -19,11 +19,6 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
-      devtools_ref:
-        description: 'Which duatic_devtools revision to check against. Pin to hold a repository to a known set of rules.'
-        default: 'main'
-        required: false
-        type: string
 
 jobs:
   check:
@@ -34,11 +29,30 @@ jobs:
         with:
           fetch-depth: 0
 
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the checks with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
         with:
-          repository: Duatic/duatic_devtools
-          ref: ${{ inputs.devtools_ref }}
-          path: .devtools
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      # setup-python rather than the system interpreter: Ubuntu 24.04 marks that one externally
+      # managed and refuses pip.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the changelog parser
+        run: python -m pip install --quiet catkin_pkg
 
       - name: Version, changelog and title must agree
         env:
@@ -48,5 +62,13 @@ jobs:
           BASE: ${{ github.event.pull_request.base.ref }}
         run: |
           git fetch --quiet origin "$BASE"
-          python3 .devtools/release/check_release_pr.py \
+          python3 .checks/release/check_release_pr.py \
             --base "origin/$BASE" --head HEAD --title "$PR_TITLE"
+
+      # Only the changelogs this pull request touches, so a repository converts as it goes.
+      - name: Touched changelogs still parse the way bloom reads them
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          python3 .checks/release/check_changelog_format.py \
+            --base "origin/$BASE" --head HEAD
