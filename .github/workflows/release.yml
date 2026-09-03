@@ -13,6 +13,13 @@ on:
         type: choice
         options: [patch, minor, major]
         default: patch
+  # Callable from other repositories, which then release themselves through this one file.
+  workflow_call:
+    inputs:
+      bump:
+        description: 'Which part of the version to increment: patch, minor or major'
+        type: string
+        default: patch
 
 permissions:
   contents: write
