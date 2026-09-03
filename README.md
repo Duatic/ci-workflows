@@ -29,6 +29,9 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
 never runs on its own. See [Claude code review](#claude-code-review).
 
+**`reusable_release_check.yml`** and **`reusable_changelog_check.yml`** are opt-in per repo and also
+unrelated to the CI matrix. See [Release checks](#release-checks).
+
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
 | Input | Required | Default | Description |
@@ -160,6 +163,37 @@ dollar figure is computed locally from token counts at list rates: on subscripti
 | `ANTHROPIC_API_KEY` | one of | Claude API key. Billed per token to the Console organization instead. |
 
 Set whichever one you want as a repo secret. If both are set, the API key wins.
+
+## Release checks
+
+Two opt-in workflows that check a pull request is coherent about what it releases. The checks
+themselves are Python scripts in `release/` in this repository.
+
+**`reusable_release_check.yml`** asserts that the `<version>` in `package.xml`, the section heading
+in `CHANGELOG.rst`, and whether the PR title starts with `release:` all agree. It fails a PR that
+bumps a version without a `release:` title, one titled `release:` that bumps nothing, and a bumped
+package whose `CHANGELOG.rst` has no section for the new version, which would otherwise release a
+version with no notes against it. It also checks that every changelog the PR touches still parses.
+Checks are per package, so one PR can release several packages at once.
+
+**`reusable_changelog_check.yml`** asserts that a pull request touching a package records the change
+under `Upcoming changes` in that package's `CHANGELOG.rst`. That section is what a release renames,
+so a change missing from it is missing from the release notes.
+
+```yaml
+jobs:
+  release-check:
+    if: github.event_name == 'pull_request'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_check.yml@v1
+
+  changelog:
+    if: github.event_name == 'pull_request'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_check.yml@v1
+```
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `runner` | no | `ubuntu-latest` | Runner label(s) to run the check on, e.g. `self-hosted`. |
 
 ## Leaf workflows (internal, not called directly by product repos)
 

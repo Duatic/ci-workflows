@@ -1,0 +1,58 @@
+name: changelog check
+# Central, org-wide reusable workflow. Asserts that a pull request touching a package also records
+# the change under "Upcoming changes" in that package's CHANGELOG.rst.
+#
+# That section is what a release renames, so a change missing from it is absent from the release
+# notes and from the .deb that ships them.
+#
+# The check lives in this repository at release/check_changelog_entry.py.
+#
+# Called by a product repository as:
+#
+#   jobs:
+#     changelog:
+#       if: github.event_name == 'pull_request'
+#       uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_check.yml@main
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+
+jobs:
+  check:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # The check compares against the merge base, so it needs history rather than a shallow clone.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the check with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - name: A touched package records the change under Upcoming changes
+        env:
+          BASE: ${{ github.event.pull_request.base.ref }}
+        run: |
+          git fetch --quiet origin "$BASE"
+          python3 .checks/release/check_changelog_entry.py \
+            --base "origin/$BASE" --head HEAD

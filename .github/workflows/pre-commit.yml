@@ -15,6 +15,11 @@ on:
         default: '3.13'
         required: false
         type: string
+      devtools_ref:
+        description: 'Take .pre-commit-config.yaml from this duatic_devtools revision. Empty uses the calling repository''s own config.'
+        default: ''
+        required: false
+        type: string
 
 jobs:
   pre-commit:
@@ -25,6 +30,16 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ inputs.python_version }}
+      # pre-commit reads a config only from the root of the repository being checked, so the shared
+      # one is fetched rather than referenced.
+      - name: Take the shared config
+        if: inputs.devtools_ref != ''
+        env:
+          REF: ${{ inputs.devtools_ref }}
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/Duatic/duatic_devtools/$REF/.pre-commit-config.yaml" \
+            -o .pre-commit-config.yaml
+
       - uses: pre-commit/action@v3.0.1
         with:
           extra_args: --all-files --hook-stage manual
