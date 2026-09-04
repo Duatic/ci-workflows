@@ -39,6 +39,7 @@ unrelated to the CI matrix. See [Release checks](#release-checks).
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
 | `badge_gist_id` | no | `''` | Opt-in: gist ID to publish per-distro pass/fail status badges to. Empty disables badge publishing entirely. |
+| `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 
 | Secret | Required | Description |
 |---|---|---|
