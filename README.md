@@ -166,7 +166,7 @@ Set whichever one you want as a repo secret. If both are set, the API key wins.
 
 ## Release checks
 
-Two opt-in workflows that check a pull request is coherent about what it releases. The checks
+Three opt-in workflows that check a pull request is coherent about what it releases. The checks
 themselves are Python scripts in `release/` in this repository.
 
 **`reusable_release_check.yml`** asserts that the `<version>` in `package.xml`, the section heading
@@ -180,6 +180,11 @@ Checks are per package, so one PR can release several packages at once.
 under `Upcoming changes` in that package's `CHANGELOG.rst`. That section is what a release renames,
 so a change missing from it is missing from the release notes.
 
+**`reusable_title_check.yml`** asserts that the pull request title is `<type>(<scope>)?!?: <subject>`
+with a type from `feat fix docs chore ci test refactor perf build release`. `main` is squash-merged,
+so the title is the commit message that lands there, and `release:` is what the release check
+keys on.
+
 ```yaml
 jobs:
   release-check:
@@ -189,6 +194,10 @@ jobs:
   changelog:
     if: github.event_name == 'pull_request'
     uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_check.yml@v1
+
+  title:
+    if: github.event_name == 'pull_request'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_title_check.yml@v1
 ```
 
 | Input | Required | Default | Description |
