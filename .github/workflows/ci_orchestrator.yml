@@ -29,6 +29,11 @@ on:
         default: ''
         required: false
         type: string
+      devtools_ref:
+        description: 'Take .pre-commit-config.yaml from this duatic_devtools revision. Empty uses the calling repository''s own config.'
+        default: ''
+        required: false
+        type: string
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
@@ -113,6 +118,7 @@ jobs:
     uses: ./.github/workflows/pre-commit.yml
     with:
       runner: ${{ inputs.runner }}
+      devtools_ref: ${{ inputs.devtools_ref }}
 
   # Coalesces every leg's badge artifact into a single gist patch.
   badges:
