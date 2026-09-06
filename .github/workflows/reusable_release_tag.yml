@@ -1,0 +1,99 @@
+name: release tag
+# Central, org-wide reusable workflow. When a release pull request merges, tags each package it
+# released as <package>/<version> at the merge commit and publishes a GitHub Release per tag with
+# that version's changelog section as its notes. A package tag never moves.
+#
+# The calling job must grant contents: write; a called workflow cannot raise the token above what
+# its caller holds. Requires a squash- or merge-committed pull request: a rebase merge's first
+# parent is not pre-merge main, so nothing is found to tag.
+#
+# Called by a product repository on the close of a pull request:
+#
+#   on:
+#     pull_request:
+#       types: [closed]
+#   jobs:
+#     tag:
+#       if: github.event.pull_request.merged
+#       permissions:
+#         contents: write
+#       uses: Duatic/ci-workflows/.github/workflows/reusable_release_tag.yml@v1
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the scripts with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - name: Tag each released package and publish its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          python3 .checks/release/released_packages.py \
+            --base "${MERGE}^1" --head "$MERGE" > "$RUNNER_TEMP/released"
+          if [ ! -s "$RUNNER_TEMP/released" ]; then
+            if printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:'; then
+              echo "::error::titled as a release, but no package version changed in the merge"
+              exit 1
+            fi
+            echo "no package version changed in this merge"
+            exit 0
+          fi
+          # A tag already at the merge commit is a rerun and is kept; one anywhere else is a clash.
+          while read -r name version _; do
+            at=$(git rev-parse -q --verify "refs/tags/${name}/${version}^{commit}" || true)
+            if [ -n "$at" ] && [ "$at" != "$MERGE" ]; then
+              echo "::error::tag ${name}/${version} already exists at ${at}"
+              exit 1
+            fi
+          done < "$RUNNER_TEMP/released"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          while read -r name version dir; do
+            tag="${name}/${version}"
+            # The section's bullets: from the version title to the next one.
+            awk -v v="$version" '
+              $0 ~ "^" v " \\(" { found = 1; getline; next }
+              found && /^[0-9]+\.[0-9]+\.[0-9]+ \(/ { exit }
+              found' "${dir}/CHANGELOG.rst" > "$RUNNER_TEMP/notes.md"
+            git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || git tag "$tag" "$MERGE"
+            git push origin "$tag"
+            gh release view "$tag" >/dev/null 2>&1 \
+              || gh release create "$tag" --title "${name} ${version}" --notes-file "$RUNNER_TEMP/notes.md"
+            echo "released ${tag}"
+          done < "$RUNNER_TEMP/released"

@@ -1,0 +1,87 @@
+name: release build
+# Builds the .deb for one released package from its tag with duatic_devtools' builder and uploads
+# it as an artifact. Signing and publishing belong to the archive host, not to a runner.
+#
+# Not wired into any repository yet. The builder resolves a package's Duatic dependencies only
+# from its local flat repository, so this fails at mk-build-deps on the first such dependency.
+# Two ways to make it pass, neither chosen yet: register the signed archive as an apt source in
+# the builder, or build the repos.list dependencies into the local repository first.
+#
+# Dispatch it here with a repository and a tag to see how far it gets.
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository:
+        description: 'owner/name of the repository holding the tag'
+        required: true
+        type: string
+      tag:
+        description: 'The <package>/<version> tag to build'
+        required: true
+        type: string
+      ros_distro:
+        description: 'ROS distro to build for'
+        default: 'jazzy'
+        type: string
+      os_version:
+        description: 'Ubuntu codename the distro targets'
+        default: 'noble'
+        type: string
+  workflow_call:
+    inputs:
+      repository:
+        description: 'owner/name of the repository holding the tag. Empty means the caller.'
+        default: ''
+        type: string
+      tag:
+        required: true
+        type: string
+      ros_distro:
+        default: 'jazzy'
+        type: string
+      os_version:
+        default: 'noble'
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.repository || github.repository }}
+          ref: ${{ inputs.tag }}
+          path: src
+
+      - uses: actions/checkout@v4
+        with:
+          repository: Duatic/duatic_devtools
+          ref: v1
+          path: .devtools
+
+      - name: Build the package into a .deb
+        id: build
+        env:
+          TAG: ${{ inputs.tag }}
+          ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
+          OS_VERSION: ${{ inputs.os_version }}
+        run: |
+          package="${TAG%%/*}"
+          mkdir -p "$RUNNER_TEMP/out"
+          docker run --rm -i \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            -e ROS_DISTRO="$ROS_DISTRO_TARGET" \
+            -e OS_VERSION="$OS_VERSION" \
+            -v "$PWD/src:/src" \
+            -v "$PWD/.devtools/packaging/builder:/builder" \
+            -v "$RUNNER_TEMP/out:/out" \
+            "ros:${ROS_DISTRO_TARGET}-ros-base" \
+            /builder/build_pkg.sh "$package" < /dev/null
+          echo "artifact=${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.artifact }}
+          path: ${{ runner.temp }}/out/*.deb
