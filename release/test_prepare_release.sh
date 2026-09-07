@@ -85,6 +85,12 @@ touch_commit() {  # touch_commit <dir> <subject> [body]
 release_commit() {  # release_commit <pkg> <version>: commit what the tool wrote and tag it
     git -C "$REPO" add -A && git -C "$REPO" commit -qm "release: $1 $2 (#0)" && git -C "$REPO" tag "$1/$2"
 }
+release_repo_commit() {  # release_repo_commit <version> <pkg>...: commit and tag every package given
+    local version="$1"
+    shift
+    git -C "$REPO" add -A && git -C "$REPO" commit -qm "release: $version"
+    for p in "$@"; do git -C "$REPO" tag "$p/$version"; done
+}
 prepend() {  # prepend <file> <text>: put text above the file's current content
     { printf '%b' "$2"; cat "$REPO/$1"; } > "$REPO/$1.new" && mv "$REPO/$1.new" "$REPO/$1"
 }
@@ -265,6 +271,75 @@ release_commit pkg_g 1.0.2
 touch_commit pkg_g "fix: i" "BREAKING-CHANGE: the hyphenated form"
 check 0 "the hyphenated footer" --package pkg_g
 expect "is a major" 1 '>2.0.0</version>' pkg_g/package.xml
+
+echo "=== --repo: a second, fresh repository, released as a whole ==="
+REPO2="$WORK/repo2"
+mkdir "$REPO2"
+REPO="$REPO2"
+cd "$REPO"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg rp_a 1.0.0
+pkg rp_b 2.0.0
+pkg rp_c 0.5.0
+git add -A && git commit -qm "feat: add rp_a, rp_b, rp_c"
+git tag rp_a/1.0.0
+git tag rp_b/2.0.0
+
+check 1 "--repo without --bump is refused" --repo
+absent "nothing was written for rp_a" rp_a/CHANGELOG.rst
+
+echo "=== every included package converges on the same, human-chosen version ==="
+touch_commit rp_a "feat: something new in a"
+printf '# excluded because it is only a disposable fixture\n\nrp_c   disposable\n' > "$REPO/release-exclude.txt"
+check 0 "repo release, rp_c excluded" --repo --bump minor
+expect "rp_a carries its own feature" 1 '^\* feat: something new in a$' rp_a/CHANGELOG.rst
+expect "rp_b, nothing new, gets an honest note" 1 '^\* No changes\.$' rp_b/CHANGELOG.rst
+expect "rp_a lands on the shared version" 1 '<version>2.1.0</version>' rp_a/package.xml
+expect "so does rp_b, even though it started at 2.0.0" 1 '<version>2.1.0</version>' rp_b/package.xml
+expect "rp_c, excluded, does not move" 1 '<version>0.5.0</version>' rp_c/package.xml
+release_repo_commit 2.1.0 rp_a rp_b
+
+echo "=== a repo release refuses if every included package has nothing to say ==="
+check 1 "nothing changed since; everyone would be No changes" --repo --bump patch
+expect "rp_a version unchanged" 1 '<version>2.1.0</version>' rp_a/package.xml
+
+echo "=== a hand-written note alone, with no qualifying commit, still counts as something ==="
+prepend rp_b/CHANGELOG.rst 'Upcoming changes\n----------------\n* rp_b docs refreshed by hand\n\n'
+git add -A && git commit -qm "docs: stage a note for rp_b"
+check 0 "rp_a has nothing new; rp_b has only a hand-written note" --repo --bump patch
+expect "rp_b's note is used, not the placeholder" 1 '^\* rp_b docs refreshed by hand$' rp_b/CHANGELOG.rst
+expect "rp_a still gets the placeholder" 1 '^\* No changes\.$' rp_a/CHANGELOG.rst
+expect "the shared version moved regardless" 1 '<version>2.1.1</version>' rp_a/package.xml
+release_repo_commit 2.1.1 rp_a rp_b
+
+echo "=== a repo release refuses up front if any target tag already exists ==="
+touch_commit rp_a "fix: a again"
+git tag rp_a/2.1.2
+check 1 "a clashing tag on one package blocks the whole release" --repo --bump patch
+expect "rp_a version unchanged" 1 '<version>2.1.1</version>' rp_a/package.xml
+git tag -d rp_a/2.1.2 >/dev/null
+
+echo "=== --version-out writes just the bare version ==="
+check 0 "patch release with --version-out" --repo --bump patch --version-out out_version.txt
+line "the file holds exactly the new version" 1 "2.1.2" out_version.txt
+release_repo_commit 2.1.2 rp_a rp_b
+
+echo "=== a breaking change under a non-major repo bump is called out ==="
+touch_commit rp_b "feat!: b breaks its API"
+check 0 "repo release with a breaking change, bump left at patch" --repo --bump patch
+expect "the summary warns about it" 1 "non-major bump" "$OUT"
+expect "and names the commit, in the warning and the changelog" 2 "feat!: b breaks its API" "$OUT"
+
+echo "=== the result passes the checks a release pull request gets, with a bare-version title ==="
+git checkout -qb release/2.1.3
+git add -A && git commit -qm "release: 2.1.3"
+( cd "$REPO" && python3 "$HERE/check_changelog_format.py" --base main --head HEAD ) >"$OUT" 2>&1
+[ $? -eq 0 ] && { printf '  PASS  %-56s\n' "check_changelog_format.py accepts it"; pass=$((pass+1)); } \
+             || { printf '  FAIL  %-56s\n' "check_changelog_format.py accepts it"; fail=$((fail+1)); sed 's/^/          /' "$OUT"; }
+( cd "$REPO" && python3 "$HERE/check_release_pr.py" --base main --head HEAD --title "release: 2.1.3" ) >"$OUT" 2>&1
+[ $? -eq 0 ] && { printf '  PASS  %-56s\n' "check_release_pr.py accepts it"; pass=$((pass+1)); } \
+             || { printf '  FAIL  %-56s\n' "check_release_pr.py accepts it"; fail=$((fail+1)); sed 's/^/          /' "$OUT"; }
+git checkout -q main
 
 echo
 echo "  $pass passed, $fail failed"

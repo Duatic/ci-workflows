@@ -33,9 +33,11 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
 never runs on its own. See [Claude code review](#claude-code-review).
 
-**`reusable_prepare_release.yml`**, **`reusable_release_check.yml`** and
-**`reusable_release_tag.yml`** carry per-package releases. They are opt-in per repo and unrelated to
-the CI matrix. See [Package releases](#package-releases).
+**`reusable_prepare_release.yml`** (one package at a time), **`reusable_prepare_repo_release.yml`**
+(every package in the repository together, at one shared version), **`reusable_release_check.yml`**
+and **`reusable_release_tag.yml`** carry releases. A repo picks one release mode by which prepare
+workflow its own `release.yml` calls; both share the same check and tag workflows. They are opt-in
+per repo and unrelated to the CI matrix. See [Package releases](#package-releases).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -172,23 +174,38 @@ Set whichever one you want as a repo secret. If both are set, the API key wins.
 
 ## Package releases
 
-ROS packages release one at a time, each on its own version, through a pull request titled
-`release: <package> <version>`. Three workflows carry it; the scripts they run are in `release/`
-in this repository.
+Releases go through a pull request titled `release: ...` that a person reviews before anything is
+tagged. A repository releases either one package at a time, each on its own version, or every
+package together at one shared version - it picks by which prepare workflow its own `release.yml`
+calls; the check and tag workflows are the same either way. The scripts behind all of it are in
+`release/` in this repository.
 
-**`reusable_prepare_release.yml`** opens that pull request. Dispatched with a package name, it takes
-the commits touching the package since its last `<package>/<version>` tag, writes them as the next
-version's section in `CHANGELOG.rst`, bumps `<version>` in `package.xml`, and opens a draft pull
-request with a summary. Subjects are read with the grammar the title check enforces: a `!` or a
-`BREAKING CHANGE` footer makes the bump major, `feat` makes it minor, anything else a patch;
-`chore`, `ci`, `test`, `build` and `release` stay out of the notes. `bump` overrides the derived
-bump, and the summary reports both. Headers changed under `include/` are listed for review. The release checks
-below run before the pull request is opened, so a bad result never reaches one.
+**`reusable_prepare_release.yml`** opens the pull request for one package. Dispatched with a
+package name, it takes the commits touching the package since its last `<package>/<version>` tag,
+writes them as the next version's section in `CHANGELOG.rst`, bumps `<version>` in `package.xml`,
+and opens a draft pull request titled `release: <package> <version>` with a summary. Subjects are
+read with the grammar the title check enforces: a `!` or a `BREAKING CHANGE` footer makes the bump
+major, `feat` makes it minor, anything else a patch; `chore`, `ci`, `test`, `build` and `release`
+stay out of the notes. `bump` overrides the derived bump, and the summary reports both. Headers
+changed under `include/` are listed for review. The release checks below run before the pull
+request is opened, so a bad result never reaches one.
 
 A note worth more than a commit title can be written at any time under an `Upcoming changes`
-heading in the package's `CHANGELOG.rst`; the next release carries those bullets first and drops
-the heading. Each note is one flat bullet (`*`, `-` or `+`); a nested list under one stops the
-release instead of losing the detail silently.
+heading in a package's `CHANGELOG.rst`; the next release carries those bullets first and drops the
+heading. Each note is one flat bullet (`*`, `-` or `+`); a nested list under one stops the release
+instead of losing the detail silently. This applies to both prepare workflows below.
+
+**`reusable_prepare_repo_release.yml`** opens the pull request for every package in the repository
+at once. `bump` is required - there is no single commit history to derive one from - and applies
+uniformly: the new version is the highest current version among the included packages, bumped by
+that amount, and every one of them moves to it together, converging even if they started at
+different versions. A package with no qualifying commit still gets the shared bump, with
+`No changes.` as its section's sole bullet, unless it has its own hand-written `Upcoming changes`
+note, which is used instead. The whole release is refused if every package would be a no-op.
+Packages listed in `release-exclude.txt` at the repository root (one name per line, an optional
+trailing reason, `#` comments) are left untouched entirely - not bumped, not noted, not counted
+toward the shared version or the no-op check. The pull request is titled `release: <version>`, with
+no package name.
 
 **`reusable_release_check.yml`** asserts on every pull request that the `<version>` in
 `package.xml`, the section heading in `CHANGELOG.rst`, and whether the title starts with `release:`
@@ -210,6 +227,8 @@ Signing and publishing belong to the archive host.
 with a type from `feat fix docs chore ci test refactor perf build release`. `main` is squash-merged,
 so the title is the commit message that lands there, and `release:` is what the release check
 keys on.
+
+Per package:
 
 ```yaml
 # .github/workflows/release.yml
@@ -245,7 +264,19 @@ jobs:
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_tag.yml@v1
 ```
 
-And in `ci.yml`, beside the orchestrator:
+Per repo - same `tag:` job, `prepare:` takes only a bump:
+
+```yaml
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_prepare_repo_release.yml@v1
+    with:
+      bump: ${{ inputs.bump }}   # type: choice, options: [major, minor, patch], no default
+    secrets: inherit
+```
+
+And in `ci.yml`, beside the orchestrator, for either mode:
 
 ```yaml
   release-check:
@@ -261,14 +292,15 @@ And in `ci.yml`, beside the orchestrator:
 |---|---|---|---|---|
 | `package` | prepare | yes | | The package to release, by its `package.xml` name. |
 | `bump` | prepare | no | `derived` | `major`, `minor` or `patch`; `derived` or empty takes it from the commits. |
+| `bump` | prepare-repo | yes | | `major`, `minor` or `patch`. No derivation: applies to every package alike. |
 | `tag` | build | yes | | The `<package>/<version>` tag to build. |
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro`, `os_version` | build | no | `jazzy`, `noble` | What to build for. |
-| `runner` | prepare, check, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+| `runner` | prepare, prepare-repo, check, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
 | Secret | Workflow | Required | Description |
 |---|---|---|---|
-| `RELEASE_PAT` | prepare | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
+| `RELEASE_PAT` | prepare, prepare-repo | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
 
 ## Leaf workflows (internal, not called directly by product repos)
 
