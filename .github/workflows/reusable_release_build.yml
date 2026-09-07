@@ -2,12 +2,7 @@ name: release build
 # Builds the .deb for one released package from its tag with duatic_devtools' builder and uploads
 # it as an artifact. Signing and publishing belong to the archive host, not to a runner.
 #
-# Not wired into any repository yet. The builder resolves a package's Duatic dependencies only
-# from its local flat repository, so this fails at mk-build-deps on the first such dependency.
-# Two ways to make it pass, neither chosen yet: register the signed archive as an apt source in
-# the builder, or build the repos.list dependencies into the local repository first.
-#
-# Dispatch it here with a repository and a tag to see how far it gets.
+# Dispatch it here with a repository and a tag.
 
 on:
   workflow_dispatch:

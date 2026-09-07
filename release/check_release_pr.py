@@ -127,7 +127,7 @@ def main():
         if new not in changelog_versions(args.head, changelog):
             problems.append(
                 f'{name}: bumped to {new} but CHANGELOG.rst has no "{new} (YYYY-MM-DD)" section. '
-                f'A release still under "Forthcoming" produces a .deb with no release notes, and '
+                f'A release still under "Upcoming changes" produces a .deb with no release notes, and '
                 f"bloom substitutes a placeholder rather than failing"
             )
 

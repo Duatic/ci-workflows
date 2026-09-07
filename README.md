@@ -19,6 +19,10 @@ from the [Actions tab](https://github.com/Duatic/ci-workflows/actions/workflows/
 `vX.Y.Z` tag, force-moves the corresponding major tag (`vX`) to the same commit, and publishes a
 GitHub Release with auto-generated notes.
 
+That is how this and the other tooling repositories version. ROS package repositories release per
+package instead, with immutable `<package>/X.Y.Z` tags and no moving major; see
+[Package releases](#package-releases).
+
 ## What consumers call
 
 For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO`
@@ -29,8 +33,9 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
 never runs on its own. See [Claude code review](#claude-code-review).
 
-**`reusable_release_check.yml`** and **`reusable_changelog_check.yml`** are opt-in per repo and also
-unrelated to the CI matrix. See [Release checks](#release-checks).
+**`reusable_prepare_release.yml`**, **`reusable_release_check.yml`** and
+**`reusable_release_tag.yml`** carry per-package releases. They are opt-in per repo and unrelated to
+the CI matrix. See [Package releases](#package-releases).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -165,21 +170,41 @@ dollar figure is computed locally from token counts at list rates: on subscripti
 
 Set whichever one you want as a repo secret. If both are set, the API key wins.
 
-## Release checks
+## Package releases
 
-Three opt-in workflows that check a pull request is coherent about what it releases. The checks
-themselves are Python scripts in `release/` in this repository.
+ROS packages release one at a time, each on its own version, through a pull request titled
+`release: <package> <version>`. Three workflows carry it; the scripts they run are in `release/`
+in this repository.
 
-**`reusable_release_check.yml`** asserts that the `<version>` in `package.xml`, the section heading
-in `CHANGELOG.rst`, and whether the PR title starts with `release:` all agree. It fails a PR that
-bumps a version without a `release:` title, one titled `release:` that bumps nothing, and a bumped
-package whose `CHANGELOG.rst` has no section for the new version, which would otherwise release a
-version with no notes against it. It also checks that every changelog the PR touches still parses.
-Checks are per package, so one PR can release several packages at once.
+**`reusable_prepare_release.yml`** opens that pull request. Dispatched with a package name, it takes
+the commits touching the package since its last `<package>/<version>` tag, writes them as the next
+version's section in `CHANGELOG.rst`, bumps `<version>` in `package.xml`, and opens a draft pull
+request with a summary. Subjects are read with the grammar the title check enforces: a `!` or a
+`BREAKING CHANGE` footer makes the bump major, `feat` makes it minor, anything else a patch;
+`chore`, `ci`, `test`, `build` and `release` stay out of the notes. `bump` overrides the derived
+bump, and the summary reports both. Headers changed under `include/` are listed for review. The release checks
+below run before the pull request is opened, so a bad result never reaches one.
 
-**`reusable_changelog_check.yml`** asserts that a pull request touching a package records the change
-under `Upcoming changes` in that package's `CHANGELOG.rst`. That section is what a release renames,
-so a change missing from it is missing from the release notes.
+A note worth more than a commit title can be written at any time under an `Upcoming changes`
+heading in the package's `CHANGELOG.rst`; the next release carries those bullets first and drops
+the heading. Each note is one flat bullet (`*`, `-` or `+`); a nested list under one stops the
+release instead of losing the detail silently.
+
+**`reusable_release_check.yml`** asserts on every pull request that the `<version>` in
+`package.xml`, the section heading in `CHANGELOG.rst`, and whether the title starts with `release:`
+all agree, and that every changelog the pull request touches still parses the way bloom reads it.
+Checks are per package, so one pull request can release several.
+
+**`reusable_release_tag.yml`** runs when a pull request merges. For each package whose version
+changed it creates the tag `<package>/<version>` at the merge commit and publishes a GitHub Release
+with that version's changelog section as its notes. Package tags never move. The calling job grants
+`contents: write`, and the pull request is squash- or merge-committed; after a rebase merge there is
+nothing for it to find.
+
+**`reusable_release_build.yml`** builds a tagged package into a `.deb` with `duatic_devtools`'
+builder and uploads it as an artifact. It is not wired into any repository yet: a package's Duatic
+dependencies resolve only from the builder's local repository, so the build stops at the first one.
+Signing and publishing belong to the archive host.
 
 **`reusable_title_check.yml`** asserts that the pull request title is `<type>(<scope>)?!?: <subject>`
 with a type from `feat fix docs chore ci test refactor perf build release`. `main` is squash-merged,
@@ -187,23 +212,63 @@ so the title is the commit message that lands there, and `release:` is what the 
 keys on.
 
 ```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to release'
+        type: choice
+        options: [pkg_a, pkg_b]
+      bump:
+        description: 'Override the bump derived from the commits'
+        type: choice
+        options: [derived, major, minor, patch]
+        default: derived
+  pull_request:
+    types: [closed]
+
 jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_prepare_release.yml@v1
+    with:
+      package: ${{ inputs.package }}
+      bump: ${{ inputs.bump }}
+    secrets: inherit
+
+  tag:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged
+    permissions:
+      contents: write
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_tag.yml@v1
+```
+
+And in `ci.yml`, beside the orchestrator:
+
+```yaml
   release-check:
     if: github.event_name == 'pull_request'
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_check.yml@v1
-
-  changelog:
-    if: github.event_name == 'pull_request'
-    uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_check.yml@v1
 
   title:
     if: github.event_name == 'pull_request'
     uses: Duatic/ci-workflows/.github/workflows/reusable_title_check.yml@v1
 ```
 
-| Input | Required | Default | Description |
+| Input | Workflow | Required | Default | Description |
+|---|---|---|---|---|
+| `package` | prepare | yes | | The package to release, by its `package.xml` name. |
+| `bump` | prepare | no | `derived` | `major`, `minor` or `patch`; `derived` or empty takes it from the commits. |
+| `tag` | build | yes | | The `<package>/<version>` tag to build. |
+| `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
+| `ros_distro`, `os_version` | build | no | `jazzy`, `noble` | What to build for. |
+| `runner` | prepare, check, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+
+| Secret | Workflow | Required | Description |
 |---|---|---|---|
-| `runner` | no | `ubuntu-latest` | Runner label(s) to run the check on, e.g. `self-hosted`. |
+| `RELEASE_PAT` | prepare | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
 
 ## Leaf workflows (internal, not called directly by product repos)
 
@@ -214,3 +279,4 @@ jobs:
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
+- Repos releasing packages through `reusable_prepare_release.yml` must have a `RELEASE_PAT` secret available (repo or org level) and pass `secrets: inherit`.
