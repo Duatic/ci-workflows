@@ -1,8 +1,8 @@
 name: release build
-# Builds the .deb for one released package from its tag with duatic_devtools' builder and uploads
-# it as an artifact. Signing and publishing belong to the archive host, not to a runner.
+# Builds the .deb for one package at a tag with duatic_devtools' builder and uploads it as an
+# artifact. Signing and publishing belong to the archive host, not to a runner.
 #
-# Dispatch it here with a repository and a tag.
+# Dispatch it here with a repository, a tag and a package.
 
 on:
   workflow_dispatch:
@@ -12,7 +12,11 @@ on:
         required: true
         type: string
       tag:
-        description: 'The <package>/<version> tag to build'
+        description: 'The tag or ref to build from'
+        required: true
+        type: string
+      package:
+        description: 'The package to build, by its package.xml name'
         required: true
         type: string
       ros_distro:
@@ -30,6 +34,9 @@ on:
         default: ''
         type: string
       tag:
+        required: true
+        type: string
+      package:
         required: true
         type: string
       ros_distro:
@@ -59,11 +66,11 @@ jobs:
       - name: Build the package into a .deb
         id: build
         env:
+          PACKAGE: ${{ inputs.package }}
           TAG: ${{ inputs.tag }}
           ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
           OS_VERSION: ${{ inputs.os_version }}
         run: |
-          package="${TAG%%/*}"
           mkdir -p "$RUNNER_TEMP/out"
           docker run --rm -i \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
@@ -73,8 +80,8 @@ jobs:
             -v "$PWD/.devtools/packaging/builder:/builder" \
             -v "$RUNNER_TEMP/out:/out" \
             "ros:${ROS_DISTRO_TARGET}-ros-base" \
-            /builder/build_pkg.sh "$package" < /dev/null
-          echo "artifact=${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
+            /builder/build_pkg.sh "$PACKAGE" < /dev/null
+          echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:

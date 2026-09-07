@@ -176,9 +176,9 @@ Set whichever one you want as a repo secret. If both are set, the API key wins.
 
 Releases go through a pull request titled `release: ...` that a person reviews before anything is
 tagged. A repository releases either one package at a time, each on its own version, or every
-package together at one shared version - it picks by which prepare workflow its own `release.yml`
-calls; the check and tag workflows are the same either way. The scripts behind all of it are in
-`release/` in this repository.
+package together at one shared version - it picks by which prepare and tag workflow its own
+`release.yml` calls; `reusable_release_check.yml` validates a pull request from either mode
+unchanged. The scripts behind all of it are in `release/` in this repository.
 
 **`reusable_prepare_release.yml`** opens the pull request for one package. Dispatched with a
 package name, it takes the commits touching the package since its last `<package>/<version>` tag,
@@ -212,16 +212,27 @@ no package name.
 all agree, and that every changelog the pull request touches still parses the way bloom reads it.
 Checks are per package, so one pull request can release several.
 
-**`reusable_release_tag.yml`** runs when a pull request merges. For each package whose version
-changed it creates the tag `<package>/<version>` at the merge commit and publishes a GitHub Release
-with that version's changelog section as its notes. Package tags never move. The calling job grants
-`contents: write`, and the pull request is squash- or merge-committed; after a rebase merge there is
-nothing for it to find.
+**`reusable_release_tag.yml`** runs when a per-package release pull request merges. For each
+package whose version changed it creates the tag `<package>/<version>` at the merge commit and
+publishes a GitHub Release with that version's changelog section as its notes. A repo-wide pull
+request also bumps several packages at once, but is tagged by the workflow below instead, so that
+a whole repo release reads as one thing rather than as many simultaneous per-package ones. Package
+tags never move. The calling job grants `contents: write`, and the pull request is squash- or
+merge-committed; after a rebase merge there is nothing for it to find.
 
-**`reusable_release_build.yml`** builds a tagged package into a `.deb` with `duatic_devtools`'
-builder and uploads it as an artifact. It is not wired into any repository yet: a package's Duatic
-dependencies resolve only from the builder's local repository, so the build stops at the first one.
-Signing and publishing belong to the archive host.
+**`reusable_repo_release_tag.yml`** runs when a repo-wide release pull request merges. Every
+included package shares one version by construction, so one tag, `v<version>`, is created at the
+merge commit, and one GitHub Release is published under it with every package's changelog section
+under its own heading. The same version-sharing requirement `check_release_pr.py` already enforces
+on the pull request is checked again here, in case a merge ever bypasses that check.
+
+**`reusable_release_build.yml`** builds one package into a `.deb` with `duatic_devtools`' builder
+and uploads it as an artifact, given a tag to check out and the package to build inside it - either
+a `<package>/<version>` tag or a repo-wide `v<version>` tag names the package explicitly, so the
+build does not need to guess it from the tag's shape. It is not wired into any repository yet: a
+package's dependencies on other packages in the org resolve only from the builder's local
+repository, so a build stops at the first such dependency. Signing and publishing belong to the
+archive host.
 
 **`reusable_title_check.yml`** asserts that the pull request title is `<type>(<scope>)?!?: <subject>`
 with a type from `feat fix docs chore ci test refactor perf build release`. `main` is squash-merged,
@@ -264,7 +275,7 @@ jobs:
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_tag.yml@v1
 ```
 
-Per repo - same `tag:` job, `prepare:` takes only a bump:
+Per repo:
 
 ```yaml
 jobs:
@@ -274,6 +285,12 @@ jobs:
     with:
       bump: ${{ inputs.bump }}   # type: choice, options: [major, minor, patch], no default
     secrets: inherit
+
+  tag:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged
+    permissions:
+      contents: write
+    uses: Duatic/ci-workflows/.github/workflows/reusable_repo_release_tag.yml@v1
 ```
 
 And in `ci.yml`, beside the orchestrator, for either mode:
@@ -293,10 +310,11 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | `package` | prepare | yes | | The package to release, by its `package.xml` name. |
 | `bump` | prepare | no | `derived` | `major`, `minor` or `patch`; `derived` or empty takes it from the commits. |
 | `bump` | prepare-repo | yes | | `major`, `minor` or `patch`. No derivation: applies to every package alike. |
-| `tag` | build | yes | | The `<package>/<version>` tag to build. |
+| `tag` | build | yes | | The tag or ref to build from. |
+| `package` | build | yes | | The package to build, by its `package.xml` name. |
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro`, `os_version` | build | no | `jazzy`, `noble` | What to build for. |
-| `runner` | prepare, prepare-repo, check, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+| `runner` | prepare, prepare-repo, check, tag, repo-tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
 | Secret | Workflow | Required | Description |
 |---|---|---|---|

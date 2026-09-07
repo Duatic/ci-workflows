@@ -86,11 +86,8 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           while read -r name version dir; do
             tag="${name}/${version}"
-            # The section's bullets: from the version title to the next one.
-            awk -v v="$version" '
-              $0 ~ "^" v " \\(" { found = 1; getline; next }
-              found && /^[0-9]+\.[0-9]+\.[0-9]+ \(/ { exit }
-              found' "${dir}/CHANGELOG.rst" > "$RUNNER_TEMP/notes.md"
+            python3 .checks/release/changelog_section.py "${dir}/CHANGELOG.rst" "$version" \
+              > "$RUNNER_TEMP/notes.md"
             git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || git tag "$tag" "$MERGE"
             git push origin "$tag"
             gh release view "$tag" >/dev/null 2>&1 \
