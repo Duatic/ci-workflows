@@ -2,7 +2,8 @@ name: release build
 # Builds the .deb for one package at a tag with duatic_devtools' builder and uploads it as an
 # artifact. Signing and publishing belong to the archive host, not to a runner.
 #
-# Dispatch it here with a repository, a tag and a package.
+# Dispatch it here with a repository, a tag and a package. The Ubuntu base to build against is
+# derived from ros_distro, since each ROS 2 distro has exactly one supported Ubuntu base.
 
 on:
   workflow_dispatch:
@@ -23,10 +24,6 @@ on:
         description: 'ROS distro to build for'
         default: 'jazzy'
         type: string
-      os_version:
-        description: 'Ubuntu codename the distro targets'
-        default: 'noble'
-        type: string
   workflow_call:
     inputs:
       repository:
@@ -41,9 +38,6 @@ on:
         type: string
       ros_distro:
         default: 'jazzy'
-        type: string
-      os_version:
-        default: 'noble'
         type: string
 
 jobs:
@@ -69,13 +63,11 @@ jobs:
           PACKAGE: ${{ inputs.package }}
           TAG: ${{ inputs.tag }}
           ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
-          OS_VERSION: ${{ inputs.os_version }}
         run: |
           mkdir -p "$RUNNER_TEMP/out"
           docker run --rm -i \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e ROS_DISTRO="$ROS_DISTRO_TARGET" \
-            -e OS_VERSION="$OS_VERSION" \
             -v "$PWD/src:/src" \
             -v "$PWD/.devtools/packaging/builder:/builder" \
             -v "$RUNNER_TEMP/out:/out" \
