@@ -65,7 +65,7 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           # Only a bare-version title belongs to this workflow; anything else is per-package.
-          if ! printf '%s' "$PR_TITLE" | grep -qE '^release(\([^)]*\))?!?:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$'; then
+          if ! printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$'; then
             echo "not titled as a repo-wide release; nothing for the repo-wide tag workflow to do"
             exit 0
           fi
