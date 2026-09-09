@@ -24,6 +24,10 @@ on:
         description: 'ROS distro to build for'
         default: 'jazzy'
         type: string
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        type: string
   workflow_call:
     inputs:
       repository:
@@ -39,10 +43,15 @@ on:
       ros_distro:
         default: 'jazzy'
         type: string
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
