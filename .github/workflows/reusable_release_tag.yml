@@ -64,6 +64,11 @@ jobs:
           MERGE: ${{ github.event.pull_request.merge_commit_sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
+          # A bare-version title belongs to reusable_repo_release_tag.yml, not this workflow.
+          if printf '%s' "$PR_TITLE" | grep -qE '^release(\([^)]*\))?!?:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$'; then
+            echo "titled as a repo-wide release; nothing for the per-package tag workflow to do"
+            exit 0
+          fi
           python3 .checks/release/released_packages.py \
             --base "${MERGE}^1" --head "$MERGE" > "$RUNNER_TEMP/released"
           if [ ! -s "$RUNNER_TEMP/released" ]; then
