@@ -314,7 +314,7 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | `package` | build | yes | | The package to build, by its `package.xml` name. |
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro` | build | no | `jazzy` | Distro to build for. The Ubuntu base is not an input; it's derived from this instead. |
-| `runner` | prepare, prepare-repo, check, tag, repo-tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+| `runner` | prepare, prepare-repo, check, tag, repo-tag, build | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
 | Secret | Workflow | Required | Description |
 |---|---|---|---|

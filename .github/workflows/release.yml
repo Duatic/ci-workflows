@@ -13,6 +13,10 @@ on:
         type: choice
         options: [patch, minor, major]
         default: patch
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        type: string
   # Callable from other repositories, which then release themselves through this one file.
   workflow_call:
     inputs:
@@ -20,13 +24,18 @@ on:
         description: 'Which part of the version to increment: patch, minor or major'
         type: string
         default: patch
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
 
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@v7
         with:
