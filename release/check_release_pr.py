@@ -47,6 +47,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 
 RELEASE_TITLE = re.compile(r"^release(\([^)]*\))?!?:\s*\S", re.I)
+# A title naming only a version, not a package, releases every touched package at that version.
+REPO_RELEASE_TITLE = re.compile(r"^release(\([^)]*\))?!?:\s*(\d+\.\d+\.\d+)\s*$", re.I)
 # REP-132, and the exact shape catkin_pkg parses: X.Y.Z, one space, a date in parentheses.
 SECTION = re.compile(r"^(\d+\.\d+\.\d+) \((.+)\)$", re.M)
 
@@ -127,7 +129,7 @@ def main():
         if new not in changelog_versions(args.head, changelog):
             problems.append(
                 f'{name}: bumped to {new} but CHANGELOG.rst has no "{new} (YYYY-MM-DD)" section. '
-                f'A release still under "Forthcoming" produces a .deb with no release notes, and '
+                f'A release still under "Upcoming changes" produces a .deb with no release notes, and '
                 f"bloom substitutes a placeholder rather than failing"
             )
 
@@ -146,6 +148,17 @@ def main():
             'titled "release: ..." but no package.xml version changed, so there is nothing to '
             "release and the tag would name a version that already shipped"
         )
+
+    repo_title = REPO_RELEASE_TITLE.match(args.title.strip())
+    if repo_title:
+        declared = repo_title.group(2)
+        mismatched = [n for n, _, new in released if new != declared]
+        if mismatched:
+            problems.append(
+                f"titled as a repo-wide release at {declared}, but "
+                + ", ".join(mismatched)
+                + " bumped to a different version: a single tag cannot name two versions"
+            )
 
     for name, old, new in released:
         print(f'  release  {name}  {old or "(new)"} -> {new}')

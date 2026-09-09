@@ -19,6 +19,10 @@ from the [Actions tab](https://github.com/Duatic/ci-workflows/actions/workflows/
 `vX.Y.Z` tag, force-moves the corresponding major tag (`vX`) to the same commit, and publishes a
 GitHub Release with auto-generated notes.
 
+That is how this and the other tooling repositories version. ROS package repositories release per
+package instead, with immutable `<package>/X.Y.Z` tags and no moving major; see
+[Package releases](#package-releases).
+
 ## What consumers call
 
 For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO`
@@ -29,8 +33,11 @@ workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
 never runs on its own. See [Claude code review](#claude-code-review).
 
-**`reusable_release_check.yml`** and **`reusable_changelog_check.yml`** are opt-in per repo and also
-unrelated to the CI matrix. See [Release checks](#release-checks).
+**`reusable_prepare_release.yml`** (one package at a time), **`reusable_prepare_repo_release.yml`**
+(every package in the repository together, at one shared version), **`reusable_release_check.yml`**
+and **`reusable_release_tag.yml`** carry releases. A repo picks one release mode by which prepare
+workflow its own `release.yml` calls; both share the same check and tag workflows. They are opt-in
+per repo and unrelated to the CI matrix. See [Package releases](#package-releases).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -165,45 +172,153 @@ dollar figure is computed locally from token counts at list rates: on subscripti
 
 Set whichever one you want as a repo secret. If both are set, the API key wins.
 
-## Release checks
+## Package releases
 
-Three opt-in workflows that check a pull request is coherent about what it releases. The checks
-themselves are Python scripts in `release/` in this repository.
+Releases go through a pull request titled `release: ...` that a person reviews before anything is
+tagged. A repository releases either one package at a time, each on its own version, or every
+package together at one shared version - it picks by which prepare and tag workflow its own
+`release.yml` calls; `reusable_release_check.yml` validates a pull request from either mode
+unchanged. The scripts behind all of it are in `release/` in this repository.
 
-**`reusable_release_check.yml`** asserts that the `<version>` in `package.xml`, the section heading
-in `CHANGELOG.rst`, and whether the PR title starts with `release:` all agree. It fails a PR that
-bumps a version without a `release:` title, one titled `release:` that bumps nothing, and a bumped
-package whose `CHANGELOG.rst` has no section for the new version, which would otherwise release a
-version with no notes against it. It also checks that every changelog the PR touches still parses.
-Checks are per package, so one PR can release several packages at once.
+**`reusable_prepare_release.yml`** opens the pull request for one package. Dispatched with a
+package name, it takes the commits touching the package since its last `<package>/<version>` tag,
+writes them as the next version's section in `CHANGELOG.rst`, bumps `<version>` in `package.xml`,
+and opens a draft pull request titled `release: <package> <version>` with a summary. Subjects are
+read with the grammar the title check enforces: a `!` or a `BREAKING CHANGE` footer makes the bump
+major, `feat` makes it minor, anything else a patch; `chore`, `ci`, `test`, `build` and `release`
+stay out of the notes. `bump` overrides the derived bump, and the summary reports both. Headers
+changed under `include/` are listed for review. The release checks below run before the pull
+request is opened, so a bad result never reaches one.
 
-**`reusable_changelog_check.yml`** asserts that a pull request touching a package records the change
-under `Upcoming changes` in that package's `CHANGELOG.rst`. That section is what a release renames,
-so a change missing from it is missing from the release notes.
+A note worth more than a commit title can be written at any time under an `Upcoming changes`
+heading in a package's `CHANGELOG.rst`; the next release carries those bullets first and drops the
+heading. Each note is one flat bullet (`*`, `-` or `+`); a nested list under one stops the release
+instead of losing the detail silently. This applies to both prepare workflows below.
+
+**`reusable_prepare_repo_release.yml`** opens the pull request for every package in the repository
+at once. `bump` is required - there is no single commit history to derive one from - and applies
+uniformly: the new version is the highest current version among the included packages, bumped by
+that amount, and every one of them moves to it together, converging even if they started at
+different versions. A package with no qualifying commit still gets the shared bump, with
+`No changes.` as its section's sole bullet, unless it has its own hand-written `Upcoming changes`
+note, which is used instead. The whole release is refused if every package would be a no-op.
+Packages listed in `release-exclude.txt` at the repository root (one name per line, an optional
+trailing reason, `#` comments) are left untouched entirely - not bumped, not noted, not counted
+toward the shared version or the no-op check. The pull request is titled `release: <version>`, with
+no package name.
+
+**`reusable_release_check.yml`** asserts on every pull request that the `<version>` in
+`package.xml`, the section heading in `CHANGELOG.rst`, and whether the title starts with `release:`
+all agree, and that every changelog the pull request touches still parses the way bloom reads it.
+Checks are per package, so one pull request can release several.
+
+**`reusable_release_tag.yml`** runs when a per-package release pull request merges. For each
+package whose version changed it creates the tag `<package>/<version>` at the merge commit and
+publishes a GitHub Release with that version's changelog section as its notes. A repo-wide pull
+request also bumps several packages at once, but is tagged by the workflow below instead, so that
+a whole repo release reads as one thing rather than as many simultaneous per-package ones. Package
+tags never move. The calling job grants `contents: write`, and the pull request is squash- or
+merge-committed; after a rebase merge there is nothing for it to find.
+
+**`reusable_repo_release_tag.yml`** runs when a repo-wide release pull request merges. Every
+included package shares one version by construction, so one tag, `v<version>`, is created at the
+merge commit, and one GitHub Release is published under it with every package's changelog section
+under its own heading. The same version-sharing requirement `check_release_pr.py` already enforces
+on the pull request is checked again here, in case a merge ever bypasses that check.
+
+**`reusable_release_build.yml`** builds one package into a `.deb` with `duatic_devtools`' builder
+and uploads it as an artifact, given a tag to check out and the package to build inside it - either
+a `<package>/<version>` tag or a repo-wide `v<version>` tag names the package explicitly, so the
+build does not need to guess it from the tag's shape. It is not wired into any repository yet: a
+package's dependencies on other packages in the org resolve only from the builder's local
+repository, so a build stops at the first such dependency. Signing and publishing belong to the
+archive host.
 
 **`reusable_title_check.yml`** asserts that the pull request title is `<type>(<scope>)?!?: <subject>`
 with a type from `feat fix docs chore ci test refactor perf build release`. `main` is squash-merged,
 so the title is the commit message that lands there, and `release:` is what the release check
 keys on.
 
+Per package:
+
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      package:
+        description: 'Package to release'
+        type: choice
+        options: [pkg_a, pkg_b]
+      bump:
+        description: 'Override the bump derived from the commits'
+        type: choice
+        options: [derived, major, minor, patch]
+        default: derived
+  pull_request:
+    types: [closed]
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_prepare_release.yml@v1
+    with:
+      package: ${{ inputs.package }}
+      bump: ${{ inputs.bump }}
+    secrets: inherit
+
+  tag:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged
+    permissions:
+      contents: write
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_tag.yml@v1
+```
+
+Per repo:
+
 ```yaml
 jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_prepare_repo_release.yml@v1
+    with:
+      bump: ${{ inputs.bump }}   # type: choice, options: [major, minor, patch], no default
+    secrets: inherit
+
+  tag:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged
+    permissions:
+      contents: write
+    uses: Duatic/ci-workflows/.github/workflows/reusable_repo_release_tag.yml@v1
+```
+
+And in `ci.yml`, beside the orchestrator, for either mode:
+
+```yaml
   release-check:
     if: github.event_name == 'pull_request'
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_check.yml@v1
-
-  changelog:
-    if: github.event_name == 'pull_request'
-    uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_check.yml@v1
 
   title:
     if: github.event_name == 'pull_request'
     uses: Duatic/ci-workflows/.github/workflows/reusable_title_check.yml@v1
 ```
 
-| Input | Required | Default | Description |
+| Input | Workflow | Required | Default | Description |
+|---|---|---|---|---|
+| `package` | prepare | yes | | The package to release, by its `package.xml` name. |
+| `bump` | prepare | no | `derived` | `major`, `minor` or `patch`; `derived` or empty takes it from the commits. |
+| `bump` | prepare-repo | yes | | `major`, `minor` or `patch`. No derivation: applies to every package alike. |
+| `tag` | build | yes | | The tag or ref to build from. |
+| `package` | build | yes | | The package to build, by its `package.xml` name. |
+| `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
+| `ros_distro` | build | no | `jazzy` | Distro to build for. The Ubuntu base is not an input; it's derived from this instead. |
+| `runner` | prepare, prepare-repo, check, tag, repo-tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+
+| Secret | Workflow | Required | Description |
 |---|---|---|---|
-| `runner` | no | `ubuntu-latest` | Runner label(s) to run the check on, e.g. `self-hosted`. |
+| `RELEASE_PAT` | prepare, prepare-repo | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
 
 ## Leaf workflows (internal, not called directly by product repos)
 
@@ -214,3 +329,4 @@ jobs:
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
+- Repos releasing packages through `reusable_prepare_release.yml` must have a `RELEASE_PAT` secret available (repo or org level) and pass `secrets: inherit`.

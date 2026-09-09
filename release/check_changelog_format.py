@@ -54,7 +54,7 @@ from catkin_pkg.changelog import Changelog, populate_changelog_from_rst
 SECTION = re.compile(r"^(\d+\.\d+\.\d+) \((.+)\)$", re.M)
 DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # The section for work that is not released yet. catkin writes "Forthcoming"; this name replaces it,
-# so catkin_tag_changelog cannot find it and the rename at release is done by hand.
+# and prepare_release.py folds it into the version section at release.
 PENDING = "Upcoming changes"
 
 

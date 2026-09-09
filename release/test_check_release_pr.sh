@@ -99,6 +99,18 @@ pkg pkg_a 1.3.0; changelog pkg_a "1.3.0 (2026-08-27)"
 git commit -qam "release: both"
 check 0 "two packages in one release PR" "release: pkg_a 1.3.0 and pkg_b 0.1.0"
 
+echo "=== a bare-version title releases every touched package at that one version ==="
+git checkout -q main && git checkout -qb b6
+pkg pkg_a 1.1.0; changelog pkg_a "1.1.0 (2026-08-27)"
+pkg pkg_b 0.1.0; changelog pkg_b "0.1.0 (2026-08-27)"
+git add -A && git commit -qm "release: 1.1.0"
+check 1 "one package bumped to a different version than the title declares" "release: 1.1.0"
+
+git checkout -q main && git checkout -qb b7
+pkg pkg_a 1.1.0; changelog pkg_a "1.1.0 (2026-08-27)"
+git add -A && git commit -qm "release: 1.1.0"
+check 0 "the only touched package matches the declared version" "release: 1.1.0"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

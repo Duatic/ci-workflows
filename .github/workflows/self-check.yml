@@ -23,5 +23,15 @@ jobs:
       - name: Python syntax
         run: python3 -m py_compile release/*.py
 
+      # The prepare suite runs the format check on what it produced, which reads with catkin_pkg.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install --quiet catkin_pkg
+
       - name: Release check suite
         run: release/test_check_release_pr.sh
+      - name: Prepare release suite
+        run: release/test_prepare_release.sh
+      - name: Released packages suite
+        run: release/test_released_packages.sh
