@@ -120,6 +120,20 @@ jobs:
             --base "origin/$BASE" --head HEAD --title "release: ${PACKAGE} ${VERSION}"
           python3 .checks/release/check_changelog_format.py --base "origin/$BASE" --head HEAD
 
+      # Preinstalled on GitHub-hosted runners; a self-hosted runner may not have it.
+      - name: Ensure the GitHub CLI is available
+        run: |
+          command -v gh >/dev/null && exit 0
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64) arch=arm64 ;;
+            *) echo "::error::unsupported architecture for gh: $(uname -m)"; exit 1 ;;
+          esac
+          version=2.62.0
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${version}/gh_${version}_linux_${arch}.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gh_${version}_linux_${arch}/bin" >> "$GITHUB_PATH"
+
       - name: Push and open a draft pull request
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PAT }}
