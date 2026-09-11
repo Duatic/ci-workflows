@@ -37,7 +37,8 @@ comments allowed) are left untouched entirely.
 Either way, each commit subject is read with the grammar the title check enforces:
 
   * "!" before the colon, or a "BREAKING CHANGE:" footer, marks a breaking change;
-  * feat, fix, perf, refactor and docs are kept, in that order after breaking changes;
+  * feat (or feature), deprecate, fix, perf, refactor and docs are kept, in that order after
+    breaking changes;
   * chore, ci, test, build and release are dropped;
   * anything else is kept last, so an unlabelled change is never silently lost.
 
@@ -70,7 +71,7 @@ EXCLUDE_FILE = "release-exclude.txt"
 # The grammar the title check enforces, so a squash-merged subject is a pull request title.
 CONVENTIONAL = re.compile(r"^(\w+)(\([^)]*\))?(!)?:\s+\S")
 BREAKING = re.compile(r"^BREAKING[ -]CHANGE:", re.M)
-KEPT = ["feat", "fix", "perf", "refactor", "docs"]
+KEPT = ["feat", "deprecate", "fix", "perf", "refactor", "docs"]
 DROPPED = {"chore", "ci", "test", "build", "release"}
 BUMPS = ["patch", "minor", "major"]
 WIDTH = 100
@@ -169,6 +170,7 @@ def classify(subject, body):
     """(rank, kind, breaking) for a commit, or None when it is dropped."""
     m = CONVENTIONAL.match(subject)
     kind = m.group(1).lower() if m else None
+    kind = "feat" if kind == "feature" else kind
     breaking = bool(BREAKING.search(body)) or bool(m and m.group(3))
     if breaking:
         return 0, kind, True
@@ -181,7 +183,7 @@ def classify(subject, body):
 def derive_bump(entries):
     if any(b for _, _, _, b in entries):
         return "major"
-    if any(k == "feat" for _, k, _, _ in entries):
+    if any(k in ("feat", "deprecate") for _, k, _, _ in entries):
         return "minor"
     return "patch"
 

@@ -12,8 +12,11 @@ runs:
         GITHUB_TOKEN: ${{ github.token }}
       with:
         # release is what check_release_pr.py keys on; the rest match the changelog bullets.
+        # feature is an alias for feat: prepare_release.py treats them identically.
         types: |
           feat
+          feature
+          deprecate
           fix
           docs
           chore
