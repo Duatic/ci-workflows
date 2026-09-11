@@ -1,0 +1,8 @@
+name: probe
+description: diagnostic composite action probe
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: echo hi from composite action
