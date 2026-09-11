@@ -34,10 +34,11 @@ Claude code review on a PR when someone comments `@claude review` on it. It's op
 never runs on its own. See [Claude code review](#claude-code-review).
 
 **`reusable_prepare_release.yml`** (one package at a time), **`reusable_prepare_repo_release.yml`**
-(every package in the repository together, at one shared version), **`reusable_release_check.yml`**
-and **`reusable_release_tag.yml`** carry releases. A repo picks one release mode by which prepare
-workflow its own `release.yml` calls; both share the same check and tag workflows. They are opt-in
-per repo and unrelated to the CI matrix. See [Package releases](#package-releases).
+(every package in the repository together, at one shared version), the **`release-check`** and
+**`title-check`** actions, and **`reusable_release_tag.yml`** carry releases. A repo picks one
+release mode by which prepare workflow its own `release.yml` calls; both share the same checks and
+tag workflows. They are opt-in per repo and unrelated to the CI matrix. See
+[Package releases](#package-releases).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -177,7 +178,7 @@ Set whichever one you want as a repo secret. If both are set, the API key wins.
 Releases go through a pull request titled `release: ...` that a person reviews before anything is
 tagged. A repository releases either one package at a time, each on its own version, or every
 package together at one shared version - it picks by which prepare and tag workflow its own
-`release.yml` calls; `reusable_release_check.yml` validates a pull request from either mode
+`release.yml` calls; the `release-check` action validates a pull request from either mode
 unchanged. The scripts behind all of it are in `release/` in this repository.
 
 **`reusable_prepare_release.yml`** opens the pull request for one package. Dispatched with a
@@ -185,8 +186,8 @@ package name, it takes the commits touching the package since its last `<package
 writes them as the next version's section in `CHANGELOG.rst`, bumps `<version>` in `package.xml`,
 and opens a draft pull request titled `release: <package> <version>` with a summary. Subjects are
 read with the grammar the title check enforces: a `!` or a `BREAKING CHANGE` footer makes the bump
-major, `feat` makes it minor, anything else a patch; `chore`, `ci`, `test`, `build` and `release`
-stay out of the notes. `bump` overrides the derived bump, and the summary reports both. Headers
+major, `feat` (or `feature`) or `deprecate` makes it minor, anything else a patch; `chore`, `ci`, `test`, `build`
+and `release` stay out of the notes. `bump` overrides the derived bump, and the summary reports both. Headers
 changed under `include/` are listed for review. The release checks below run before the pull
 request is opened, so a bad result never reaches one.
 
@@ -207,10 +208,15 @@ trailing reason, `#` comments) are left untouched entirely - not bumped, not not
 toward the shared version or the no-op check. The pull request is titled `release: <version>`, with
 no package name.
 
-**`reusable_release_check.yml`** asserts on every pull request that the `<version>` in
-`package.xml`, the section heading in `CHANGELOG.rst`, and whether the title starts with `release:`
-all agree, and that every changelog the pull request touches still parses the way bloom reads it.
-Checks are per package, so one pull request can release several.
+**`actions/release-check`** is a composite action, not a reusable workflow: a job calling a
+`workflow_call` reusable workflow hosted in this repository cannot use a self-hosted runner group
+under a plain `pull_request` trigger (opened/synchronize/reopened), only under `workflow_dispatch`
+or `pull_request: closed`. As a composite action it runs as a step inside a job the consumer repo
+owns instead, keeping checks on self-hosted while sidestepping that restriction. It asserts that
+the `<version>` in `package.xml`, the section heading in `CHANGELOG.rst`, and whether the title
+starts with `release:` all agree, and that every changelog the pull request touches still parses
+the way bloom reads it. Checks are per package, so one pull request can release several. Requires
+the caller to have already checked out the repository with full history (`fetch-depth: 0`).
 
 **`reusable_release_tag.yml`** runs when a per-package release pull request merges. For each
 package whose version changed it creates the tag `<package>/<version>` at the merge commit and
@@ -234,10 +240,12 @@ package's dependencies on other packages in the org resolve only from the builde
 repository, so a build stops at the first such dependency. Signing and publishing belong to the
 archive host.
 
-**`reusable_title_check.yml`** asserts that the pull request title is `<type>(<scope>)?!?: <subject>`
-with a type from `feat fix docs chore ci test refactor perf build release`. `main` is squash-merged,
-so the title is the commit message that lands there, and `release:` is what the release check
-keys on.
+**`actions/title-check`**, also a composite action for the same reason, asserts that the pull
+request title is `<type>(<scope>)?!?: <subject>` with a type from `feat feature deprecate fix docs
+chore ci test refactor perf build release` (`feature` is an alias for `feat`). `main` is
+squash-merged, so the title is the commit message that
+lands there, and `release:` is what the release check keys on. Requires
+`permissions: pull-requests: read` on the calling job.
 
 Per package:
 
@@ -296,13 +304,17 @@ jobs:
 And in `ci.yml`, beside the orchestrator, for either mode:
 
 ```yaml
-  release-check:
+  checks:
     if: github.event_name == 'pull_request'
-    uses: Duatic/ci-workflows/.github/workflows/reusable_release_check.yml@v1
-
-  title:
-    if: github.event_name == 'pull_request'
-    uses: Duatic/ci-workflows/.github/workflows/reusable_title_check.yml@v1
+    runs-on: self-hosted
+    permissions:
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: Duatic/ci-workflows/actions/release-check@v1
+      - uses: Duatic/ci-workflows/actions/title-check@v1
 ```
 
 | Input | Workflow | Required | Default | Description |
@@ -314,7 +326,7 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | `package` | build | yes | | The package to build, by its `package.xml` name. |
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro` | build | no | `jazzy` | Distro to build for. The Ubuntu base is not an input; it's derived from this instead. |
-| `runner` | prepare, prepare-repo, check, tag, repo-tag, build | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+| `runner` | prepare, prepare-repo, tag, repo-tag, build | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
 | Secret | Workflow | Required | Description |
 |---|---|---|---|
