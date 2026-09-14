@@ -1,0 +1,41 @@
+name: release check
+description: >-
+  Asserts that a pull request is internally consistent about what it releases: the package.xml
+  version, the CHANGELOG.rst section and the PR title must agree.
+
+  Requires the caller to have already checked out the repository with full history
+  (actions/checkout with fetch-depth: 0): the check compares against the merge base, which a
+  shallow clone doesn't have.
+
+runs:
+  using: composite
+  steps:
+    # setup-python rather than the system interpreter: Ubuntu 24.04 marks that one externally
+    # managed and refuses pip.
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - name: Install the changelog parser
+      shell: bash
+      run: python -m pip install --quiet catkin_pkg
+
+    - name: Version, changelog and title must agree
+      shell: bash
+      env:
+        # From the event rather than the ref: a pull request's title is not in the git history,
+        # and it is one of the three things being compared.
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        BASE: ${{ github.event.pull_request.base.ref }}
+      run: |
+        git fetch --quiet origin "$BASE"
+        python3 "${{ github.action_path }}/../../release/check_release_pr.py" \
+          --base "origin/$BASE" --head HEAD --title "$PR_TITLE"
+
+    # Only the changelogs this pull request touches, so a repository converts as it goes.
+    - name: Touched changelogs still parse the way bloom reads them
+      shell: bash
+      env:
+        BASE: ${{ github.event.pull_request.base.ref }}
+      run: |
+        python3 "${{ github.action_path }}/../../release/check_changelog_format.py" \
+          --base "origin/$BASE" --head HEAD
