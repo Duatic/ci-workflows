@@ -240,6 +240,15 @@ package's dependencies on other packages in the org resolve only from the builde
 repository, so a build stops at the first such dependency. Signing and publishing belong to the
 archive host.
 
+**`reusable_release_publish.yml`** takes that artifact and publishes it into a signed archive root,
+by delivering it to the publish host and calling `duatic_devtools`' archive tooling there. The
+signing key is never on the runner. It is `workflow_call` only and reads the artifact from the same
+run, so it is called after the build job rather than dispatched on its own. The package name and
+version are read from the `.deb` filename rather than taken as inputs, and both are refused unless
+they match a conservative character set, because they reach a command run on the host that holds the
+key. Needs `PUBLISH_HOST`, `PUBLISH_USER`, `PUBLISH_SSH_KEY`, `PUBLISH_HOST_KEY` and
+`EXPECTED_KEY_FPR`, and expects a `duatic_devtools` checkout at `~/duatic_devtools` on that host.
+
 **`actions/title-check`**, also a composite action for the same reason, asserts that the pull
 request title is `<type>(<scope>)?!?: <subject>` with a type from `feat feature deprecate fix docs
 chore ci test refactor perf build release` (`feature` is an alias for `feat`). `main` is
