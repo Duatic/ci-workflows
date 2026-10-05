@@ -48,11 +48,17 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+    outputs:
+      artifact:
+        description: 'Name of the uploaded artifact, to hand to the publish workflow'
+        value: ${{ jobs.build.outputs.artifact }}
 
 jobs:
   build:
     runs-on: ${{ inputs.runner }}
     timeout-minutes: 30
+    outputs:
+      artifact: ${{ steps.build.outputs.artifact }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -84,7 +90,11 @@ jobs:
             /builder/build_pkg.sh "$PACKAGE" < /dev/null
           echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
 
+      # Debug symbols are a .ddeb, which a *.deb glob misses. build_pkg.sh collects them and the
+      # archive indexes them, so leaving them here is where they would be lost.
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build.outputs.artifact }}
-          path: ${{ runner.temp }}/out/*.deb
+          path: |
+            ${{ runner.temp }}/out/*.deb
+            ${{ runner.temp }}/out/*.ddeb

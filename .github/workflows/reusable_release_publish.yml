@@ -1,0 +1,129 @@
+name: release publish
+# Takes the .deb reusable_release_build.yml produced and publishes it into a signed archive root.
+#
+# Signing is not here and cannot be: the key lives on the publish host, so this delivers the
+# package and calls the archive tooling there. A runner that could read the key could sign
+# anything the fleet installs.
+#
+# workflow_call only, and from the same run as the build: it consumes that run's artifact.
+
+on:
+  workflow_call:
+    inputs:
+      artifact:
+        description: 'Artifact holding the .deb, as reusable_release_build.yml named it'
+        required: true
+        type: string
+      root:
+        description: 'Archive root to publish into, as the package declares it'
+        required: true
+        type: string
+      distro:
+        description: 'ROS distro the package was built for, naming the routing list'
+        default: 'jazzy'
+        required: false
+        type: string
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+    secrets:
+      PUBLISH_HOST:
+        required: true
+      PUBLISH_USER:
+        required: true
+      PUBLISH_SSH_KEY:
+        required: true
+      PUBLISH_HOST_KEY:
+        required: true
+      EXPECTED_KEY_FPR:
+        required: true
+
+# aptly's database is single-writer and the routing lists and dist tree are shared, so two
+# releases publishing at once corrupt each other rather than queueing.
+concurrency:
+  group: publish-${{ inputs.root }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact }}
+          path: deb
+
+      # From the filename rather than an input: <package>_<version>_<arch>.deb already states
+      # both, and a caller restating them is a mismatch waiting to happen.
+      - name: Read the package name and version
+        id: deb
+        env:
+          ARTIFACT: ${{ inputs.artifact }}
+          ROOT: ${{ inputs.root }}
+          DISTRO: ${{ inputs.distro }}
+        run: |
+          count="$(find deb -name '*.deb' | wc -l)"
+          # One package per call. build_pkg.sh collects every .deb the build produced, and
+          # picking one of several would deliver it and drop the rest with the job still green.
+          [ "$count" = 1 ] \
+            || { echo "FATAL: expected 1 .deb in $ARTIFACT, found $count" >&2; exit 1; }
+          file="$(find deb -name '*.deb')"
+          base="$(basename "$file")"
+          package="${base%%_*}"
+          rest="${base#*_}"
+          version="${rest%%_*}"
+          # These are interpolated into a command run on the host that holds the signing key, so
+          # anything outside this set is refused rather than escaped.
+          for field in "$package" "$version" "$ROOT" "$DISTRO"; do
+            printf '%s' "$field" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._/+~-]*$' \
+              || { echo "FATAL: refusing unexpected characters in '$field'" >&2; exit 1; }
+          done
+          {
+            echo "path=$file"
+            echo "package=$package"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Configure SSH to the publish host
+        env:
+          SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
+          HOST_KEY: ${{ secrets.PUBLISH_HOST_KEY }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          # Pinned, not scanned: a scanned key accepts whatever answers, and what answers holds
+          # the archive.
+          printf '%s\n' "$HOST_KEY" >> ~/.ssh/known_hosts
+
+      - name: Deliver and publish
+        env:
+          DEB: ${{ steps.deb.outputs.path }}
+          PACKAGE: ${{ steps.deb.outputs.package }}
+          VERSION: ${{ steps.deb.outputs.version }}
+          ROOT: ${{ inputs.root }}
+          DISTRO: ${{ inputs.distro }}
+          HOST: ${{ secrets.PUBLISH_HOST }}
+          PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
+          FPR: ${{ secrets.EXPECTED_KEY_FPR }}
+        run: |
+          target="$PUBLISH_USER@$HOST"
+          # Everything the build produced, not just the .deb the version was read from: the
+          # debug symbols ship as a .ddeb and the archive indexes them alongside.
+          scp deb/* "$target:~/archive/out/"
+          # Named explicitly: a non-interactive ssh reads no profile, so nothing the publish
+          # host exports in a login shell reaches this command.
+          # Expanded here rather than on the host: every value is checked against a
+          # conservative character set above, and the host must receive literals.
+          # shellcheck disable=SC2029
+          ssh "$target" \
+            "EXPECTED_KEY_FPR='$FPR' DISTRO='$DISTRO' \
+             ~/duatic_devtools/packaging/archive/add_and_publish.sh \
+             '${PACKAGE}:${ROOT}:${VERSION}'"
+
+      - name: Remove the signing host key from the runner
+        if: always()
+        run: rm -f ~/.ssh/id_ed25519
