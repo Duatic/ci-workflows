@@ -47,6 +47,7 @@ tag workflows. They are opt-in per repo and unrelated to the CI matrix. See
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
 | `badge_gist_id` | no | `''` | Opt-in: gist ID to publish per-distro pass/fail status badges to. Empty disables badge publishing entirely. |
+| `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 
 | Secret | Required | Description |
@@ -129,13 +130,39 @@ renderer](https://shields.io/badges/endpoint-badge) then turns into a badge:
    [![Jazzy](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/<user>/<gist-id>/raw/<repo-name>-jazzy.json)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
    ```
 
-Badges are only written on pushes to `main`. Each distro leg renders its own badge JSON and uploads it as an artifact; a `badges` job in the orchestrator downloads every leg's artifact and does a single multi-file gist PATCH per run.
+Badges are only written for runs on the default branch. Each distro leg renders its own badge JSON and uploads it as an artifact; a `badges` job in the orchestrator downloads every leg's artifact and does a single multi-file gist PATCH per run.
 
 **Use a separate gist per repo**, even though the filename is namespaced (`<repo-name>-<distro>.json`)
 and would technically allow sharing one gist across repos. With ~20 repos on the same nightly
 cron, concurrent writers hitting the *same* gist trip GitHub's secondary (abuse) rate limit even
 after coalescing each repo down to one write. The abuse limit is sensitive to concurrent writes against
 one resource, not just total call volume.
+
+## Status badges (opt-in, `badges` branch)
+
+The orchestrator can commit one SVG per distro to a `badges` branch of the calling repository,
+using the job's `GITHUB_TOKEN`. No PAT or gist is needed, and badges of private repos stay private.
+
+1. Grant `contents: write` on the job and pass `badge_branch: true`:
+   ```yaml
+   jobs:
+     ci:
+       permissions:
+         contents: write
+       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+       with:
+         ros_distro: ${{ inputs.ros_distro }}
+         badge_branch: true
+       secrets: inherit
+   ```
+2. After the first run on the default branch has created the branch, point README badges at it:
+   ```markdown
+   [![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
+   ```
+
+Badges are only written for runs on the default branch. A run that builds a single distro updates only that
+distro's badge. The build and pre-commit jobs run with `contents: read`; only the badges job uses
+the write permission.
 
 ## Claude code review
 

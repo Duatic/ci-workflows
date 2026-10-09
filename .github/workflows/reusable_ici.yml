@@ -32,10 +32,15 @@ on:
         required: false
         type: string
       badge_gist_id:
-        description: 'Optional gist ID to publish a pass/fail status badge to. Empty (default) disables badge publishing. Only written on pushes to main.'
+        description: 'Optional gist ID to publish a pass/fail status badge to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
         default: ''
         required: false
         type: string
+      badge_branch:
+        description: 'Write a pass/fail status badge artifact for the orchestrator to publish to the badges branch. Only written for runs on the default branch.'
+        default: false
+        required: false
+        type: boolean
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in the repos.list workspace file.'
@@ -98,7 +103,7 @@ jobs:
           BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}
 
       - name: Write badge artifact
-        if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+        if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         shell: bash
         run: |
           set -euo pipefail
@@ -114,7 +119,7 @@ jobs:
           EOF
 
       - name: Upload badge artifact
-        if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+        if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
         uses: actions/upload-artifact@v4
         with:
           name: badge-${{ inputs.ros_distro }}

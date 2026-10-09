@@ -25,10 +25,15 @@ on:
         required: false
         type: string
       badge_gist_id:
-        description: 'Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written on pushes to main.'
+        description: 'Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
         default: ''
         required: false
         type: string
+      badge_branch:
+        description: 'Publish per-distro pass/fail status badges as SVGs to the "badges" branch of the calling repository. Requires the caller to grant "contents: write". Only written for runs on the default branch.'
+        default: false
+        required: false
+        type: boolean
       devtools_ref:
         description: 'Take .pre-commit-config.yaml from this duatic_devtools revision. Empty uses the calling repository''s own config.'
         default: ''
@@ -88,12 +93,15 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.primary) }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/reusable_ici.yml
     with:
       ros_distro: ${{ matrix.ros_distro }}
       ros_repo: ${{ matrix.ros_repo }}
       runner: ${{ inputs.runner }}
       badge_gist_id: ${{ inputs.badge_gist_id }}
+      badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
   secondary:
@@ -104,27 +112,32 @@ jobs:
       fail-fast: false
       matrix:
         include: ${{ fromJSON(needs.prepare.outputs.secondary) }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/reusable_ici.yml
     with:
       ros_distro: ${{ matrix.ros_distro }}
       ros_repo: ${{ matrix.ros_repo }}
       runner: ${{ inputs.runner }}
       badge_gist_id: ${{ inputs.badge_gist_id }}
+      badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
   pre-commit:
     name: pre-commit
     if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    permissions:
+      contents: read
     uses: ./.github/workflows/pre-commit.yml
     with:
       runner: ${{ inputs.runner }}
       devtools_ref: ${{ inputs.devtools_ref }}
 
-  # Coalesces every leg's badge artifact into a single gist patch.
+  # Coalesces every leg's badge artifact into a single gist patch and/or badges branch commit.
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
-    if: ${{ always() && inputs.badge_gist_id != '' && github.ref == 'refs/heads/main' }}
+    if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
@@ -153,6 +166,7 @@ jobs:
           done
 
       - name: Publish badges to gist
+        if: ${{ inputs.badge_gist_id != '' }}
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
           GIST_ID: ${{ inputs.badge_gist_id }}
@@ -173,3 +187,33 @@ jobs:
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/gists/${GIST_ID}" \
             -d "$payload" > /dev/null
+
+      - name: Publish badges to branch
+        if: ${{ inputs.badge_branch }}
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          src="$PWD/badges"
+          mkdir out && cd out
+          git init -q -b badges
+          git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          # Build on the existing branch so badges of distros not built this run are kept
+          if git fetch -q --depth=1 origin badges; then git reset -q --hard FETCH_HEAD; fi
+          for f in "$src"/*.json; do
+            d=$(jq -r .label "$f")
+            curl -sSfG https://img.shields.io/static/v1 -o "${d}.svg" \
+              --data-urlencode "label=${d}" \
+              --data-urlencode "message=$(jq -r .message "$f")" \
+              --data-urlencode "color=$(jq -r .color "$f")"
+          done
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Badges unchanged, nothing to publish."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -qm "Update status badges"
+          git push -q origin HEAD:badges
