@@ -25,7 +25,7 @@ on:
         required: false
         type: string
       badge_gist_id:
-        description: 'Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
+        description: 'Deprecated, removed in the next major release, use badge_branch. Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
         default: ''
         required: false
         type: string
@@ -44,7 +44,7 @@ on:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
         required: false
       GIST_TOKEN:
-        description: 'PAT with "gist" scope, required only when badge_gist_id is set.'
+        description: 'Deprecated, removed with badge_gist_id in the next major release. PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 concurrency:
@@ -172,6 +172,7 @@ jobs:
           GIST_ID: ${{ inputs.badge_gist_id }}
         run: |
           set -euo pipefail
+          echo "::warning title=badge_gist_id is deprecated::Gist badges will be removed in the next major release. Switch to badge_branch: true."
           shopt -s nullglob
           files=(badges/*.json)
           if [ "${#files[@]}" -eq 0 ]; then

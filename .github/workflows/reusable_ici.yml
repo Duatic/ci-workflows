@@ -32,7 +32,7 @@ on:
         required: false
         type: string
       badge_gist_id:
-        description: 'Optional gist ID to publish a pass/fail status badge to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
+        description: 'Deprecated, removed in the next major release, use badge_branch. Optional gist ID to publish a pass/fail status badge to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
         default: ''
         required: false
         type: string
@@ -46,7 +46,7 @@ on:
         description: 'Optional PAT used to clone private upstream dependencies listed in the repos.list workspace file.'
         required: false
       GIST_TOKEN:
-        description: 'PAT with "gist" scope, required only when badge_gist_id is set.'
+        description: 'Deprecated, removed with badge_gist_id in the next major release. PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 jobs:

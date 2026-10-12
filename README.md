@@ -46,7 +46,7 @@ tag workflows. They are opt-in per repo and unrelated to the CI matrix. See
 |---|---|---|---|
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
-| `badge_gist_id` | no | `''` | Opt-in: gist ID to publish per-distro pass/fail status badges to. Empty disables badge publishing entirely. |
+| `badge_gist_id` | no | `''` | Deprecated, removed in the next major release, use `badge_branch`. Opt-in: gist ID to publish per-distro pass/fail status badges to. Empty disables badge publishing entirely. |
 | `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 
@@ -105,7 +105,11 @@ jobs:
     secrets: inherit
 ```
 
-## Status badges for private repos (opt-in, gist-backed)
+## Status badges for private repos (opt-in, gist-backed, deprecated)
+
+> **Deprecated:** gist-backed badges will be removed in the next major release. Use the
+> [`badges` branch](#status-badges-opt-in-badges-branch) instead. Runs that set `badge_gist_id`
+> emit a deprecation warning.
 
 GitHub's native workflow `badge.svg` reports at the workflow-**file** level, so it can't show
 one badge per distro, and it won't render for anonymous viewers of a **private** repo's README.
