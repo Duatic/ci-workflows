@@ -249,7 +249,8 @@ starts with `release:` all agree, and that every changelog the pull request touc
 the way bloom reads it. Checks are per package, so one pull request can release several. Requires
 the caller to have already checked out the repository with full history (`fetch-depth: 0`).
 
-**`reusable_release_tag.yml`** runs when a per-package release pull request merges. For each
+**`reusable_release_tag.yml`** runs when a per-package release pull request merges, and does
+nothing for a pull request whose title does not start with `release:`. For each
 package whose version changed it creates the tag `<package>/<version>` at the merge commit and
 publishes a GitHub Release with that version's changelog section as its notes. A repo-wide pull
 request also bumps several packages at once, but is tagged by the workflow below instead, so that
@@ -284,8 +285,10 @@ key. Needs `PUBLISH_HOST`, `PUBLISH_USER`, `PUBLISH_SSH_KEY`, `PUBLISH_HOST_KEY`
 request title is `<type>(<scope>)?!?: <subject>` with a type from `feat feature deprecate fix docs
 chore ci test refactor perf build release` (`feature` is an alias for `feat`). `main` is
 squash-merged, so the title is the commit message that
-lands there, and `release:` is what the release check keys on. Requires
-`permissions: pull-requests: read` on the calling job.
+lands there, and `release:` is what the release check keys on. It also runs the version half of
+the release check: a `package.xml` version may only change in a `release:` pull request. A package
+new to the repository is not a release until a `release:` pull request ships it. Requires
+`permissions: pull-requests: read` on the calling job and a checkout of the repository before it.
 
 Per package:
 

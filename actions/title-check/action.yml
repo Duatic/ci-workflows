@@ -2,7 +2,8 @@ name: title check
 description: >-
   Asserts that a pull request title has the conventional commit shape the changelogs use:
   <type>(<scope>)?!?: <subject>. main is squash-merged, so the title is the commit message that
-  lands there.
+  lands there. Also asserts that a package.xml version changes only in a `release:` pull request.
+  Requires the caller to have checked out the repository first.
 
 runs:
   using: composite
@@ -26,3 +27,17 @@ runs:
           perf
           build
           release
+
+    - name: A version change needs a release title
+      shell: bash
+      env:
+        PR_TITLE: ${{ github.event.pull_request.title }}
+        BASE: ${{ github.event.pull_request.base.ref }}
+      run: |
+        # The merge base is needed, and callers check out with depth 1.
+        if [ "$(git rev-parse --is-shallow-repository)" = true ]; then
+          git fetch --quiet --unshallow origin
+        fi
+        git fetch --quiet origin "$BASE"
+        python3 "${{ github.action_path }}/../../release/check_release_pr.py" \
+          --base "origin/$BASE" --head HEAD --title "$PR_TITLE"

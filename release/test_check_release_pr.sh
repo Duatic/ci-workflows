@@ -111,6 +111,21 @@ pkg pkg_a 1.1.0; changelog pkg_a "1.1.0 (2026-08-27)"
 git add -A && git commit -qm "release: 1.1.0"
 check 0 "the only touched package matches the declared version" "release: 1.1.0"
 
+echo "=== a new package is ordinary work until a release PR ships it ==="
+git checkout -q main && git checkout -qb b8
+pkg pkg_c 0.0.0
+git add -A && git commit -qm "feat: add pkg_c"
+check 0 "a new package without a changelog, titled as a feature" "feat: add pkg_c"
+check 1 "the same new package in a release PR needs its changelog" "release: pkg_c 0.0.0"
+
+echo "=== a moved package is compared against its old path ==="
+git checkout -q main && git checkout -qb b9
+mkdir -p group && git mv pkg_a group/pkg_a && git commit -qm "refactor: move pkg_a"
+check 0 "moved at the same version, titled as a refactor" "refactor: move pkg_a"
+pkg group/pkg_a 1.1.0; changelog group/pkg_a "1.1.0 (2026-08-27)"
+git add -A && git commit -qm "feat: bump while moving"
+check 1 "moved and bumped without a release title" "feat: bump while moving"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

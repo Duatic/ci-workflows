@@ -83,15 +83,15 @@ jobs:
             echo "titled as a repo-wide release; nothing for the per-package tag workflow to do"
             exit 0
           fi
+          if ! printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:'; then
+            echo "not a release pull request; nothing to tag"
+            exit 0
+          fi
           python3 .checks/release/released_packages.py \
             --base "${MERGE}^1" --head "$MERGE" > "$RUNNER_TEMP/released"
           if [ ! -s "$RUNNER_TEMP/released" ]; then
-            if printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:'; then
-              echo "::error::titled as a release, but no package version changed in the merge"
-              exit 1
-            fi
-            echo "no package version changed in this merge"
-            exit 0
+            echo "::error::titled as a release, but no package version changed in the merge"
+            exit 1
           fi
           # A tag already at the merge commit is a rerun and is kept; one anywhere else is a clash.
           while read -r name version _; do
