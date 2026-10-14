@@ -19,6 +19,11 @@ on:
         default: 'all'
         required: false
         type: string
+      extra_distros:
+        description: 'Comma-separated distros to add to the secondary matrix when ros_distro is "all", e.g. "humble".'
+        default: ''
+        required: false
+        type: string
       runner:
         description: 'Runner label(s) to run all jobs on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
@@ -73,12 +78,15 @@ jobs:
       - id: plan
         env:
           SEL_DISTRO: ${{ inputs.ros_distro }}
+          EXTRA_DISTROS: ${{ inputs.extra_distros }}
         run: |
           channel() { case "$1" in rolling) echo testing;; *) echo main;; esac; }
           entry() { printf '{"ros_distro":"%s","ros_repo":"%s"}' "$1" "$(channel "$1")"; }
           if [ -z "$SEL_DISTRO" ] || [ "$SEL_DISTRO" = "all" ]; then
             primary="[$(entry jazzy)]"
-            secondary="[$(entry kilted),$(entry lyrical),$(entry rolling)]"
+            extra=""
+            for d in ${EXTRA_DISTROS//,/ }; do extra="${extra}$(entry "$d"),"; done
+            secondary="[${extra}$(entry kilted),$(entry lyrical),$(entry rolling)]"
           else
             primary="[$(entry "$SEL_DISTRO")]"
             secondary="[]"
