@@ -73,8 +73,11 @@ jobs:
           else
             echo "before_install=" >> "$GITHUB_OUTPUT"
           fi
-          if [ -f requirements.txt ]; then
-            echo "pip_install=python3 -m pip install --break-system-packages --ignore-installed -r requirements.txt" >> "$GITHUB_OUTPUT"
+          # Every requirements.txt file is resolved together so conflicting versions are detected.
+          mapfile -t requirements < <(find . \( -name build -o -name install -o -name log -o -name .venv -o -name node_modules \) -prune \
+            -o -type f -name requirements.txt -print | LC_ALL=C sort)
+          if [ ${#requirements[@]} -gt 0 ]; then
+            echo "pip_install=python3 -m pip install --break-system-packages --ignore-installed$(printf ' -r %q' "${requirements[@]}")" >> "$GITHUB_OUTPUT"
           else
             echo "pip_install=" >> "$GITHUB_OUTPUT"
           fi
