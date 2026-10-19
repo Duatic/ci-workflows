@@ -265,8 +265,10 @@ merge commit, and one GitHub Release is published under it with every package's 
 under its own heading. The same version-sharing requirement `check_release_pr.py` already enforces
 on the pull request is checked again here, in case a merge ever bypasses that check.
 
-**`reusable_release_build.yml`** builds one package into a `.deb` with `duatic_devtools`' builder
-and uploads it as an artifact, given a tag to check out and the package to build inside it - either
+**`reusable_release_build.yml`** builds one package into a `.deb` with `duatic_devtools`' builder,
+once for amd64 on `runner` and once for arm64 on `arm64_runner` (default `ubuntu-24.04-arm`), both
+native. Each architecture is uploaded as its own artifact, `<artifact>-amd64` and `<artifact>-arm64`.
+It takes a tag to check out and the package to build inside it - either
 a `<package>/<version>` tag or a repo-wide `v<version>` tag names the package explicitly, so the
 build does not need to guess it from the tag's shape. It is not wired into any repository yet: a
 package's dependencies on other packages in the org resolve only from the builder's local

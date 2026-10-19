@@ -1,6 +1,7 @@
 name: release build
-# Builds the .deb for one package at a tag with duatic_devtools' builder and uploads it as an
-# artifact. Signing and publishing belong to the archive host, not to a runner.
+# Builds the .deb for one package at a tag with duatic_devtools' builder, for amd64 and arm64, and
+# uploads one artifact per architecture. Signing and publishing belong to the archive host, not to
+# a runner.
 #
 # Dispatch it here with a repository, a tag and a package. The Ubuntu base to build against is
 # derived from ros_distro, since each ROS 2 distro has exactly one supported Ubuntu base.
@@ -28,6 +29,10 @@ on:
         description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
         type: string
+      arm64_runner:
+        description: 'Native arm64 runner label(s) for the arm64 build, e.g. "ubuntu-24.04-arm" or a self-hosted label.'
+        default: 'ubuntu-24.04-arm'
+        type: string
   workflow_call:
     inputs:
       repository:
@@ -48,14 +53,23 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+      arm64_runner:
+        description: 'Native arm64 runner label(s) for the arm64 build, e.g. "ubuntu-24.04-arm" or a self-hosted label.'
+        default: 'ubuntu-24.04-arm'
+        required: false
+        type: string
     outputs:
       artifact:
-        description: 'Name of the uploaded artifact, to hand to the publish workflow'
+        description: 'Artifact name without its architecture: the artifacts are <artifact>-amd64 and <artifact>-arm64'
         value: ${{ jobs.build.outputs.artifact }}
 
 jobs:
   build:
-    runs-on: ${{ inputs.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    runs-on: ${{ matrix.arch == 'arm64' && inputs.arm64_runner || inputs.runner }}
     timeout-minutes: 30
     outputs:
       artifact: ${{ steps.build.outputs.artifact }}
@@ -78,9 +92,10 @@ jobs:
           PACKAGE: ${{ inputs.package }}
           TAG: ${{ inputs.tag }}
           ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
+          ARCH: ${{ matrix.arch }}
         run: |
           mkdir -p "$RUNNER_TEMP/out"
-          docker run --rm -i \
+          docker run --rm -i --platform "linux/$ARCH" \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e ROS_DISTRO="$ROS_DISTRO_TARGET" \
             -v "$PWD/src:/src" \
@@ -88,13 +103,16 @@ jobs:
             -v "$RUNNER_TEMP/out:/out" \
             "ros:${ROS_DISTRO_TARGET}-ros-base" \
             /builder/build_pkg.sh "$PACKAGE" < /dev/null
+          # The artifact name promises this architecture, so it is checked rather than assumed.
+          ls "$RUNNER_TEMP"/out/*_"$ARCH".deb >/dev/null \
+            || { echo "::error::no ${ARCH} .deb produced"; ls "$RUNNER_TEMP/out"; exit 1; }
           echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
 
       # Debug symbols are a .ddeb, which a *.deb glob misses. build_pkg.sh collects them and the
       # archive indexes them, so leaving them here is where they would be lost.
       - uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.build.outputs.artifact }}
+          name: ${{ steps.build.outputs.artifact }}-${{ matrix.arch }}
           path: |
             ${{ runner.temp }}/out/*.deb
             ${{ runner.temp }}/out/*.ddeb
