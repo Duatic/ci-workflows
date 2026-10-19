@@ -100,10 +100,13 @@ jobs:
           ROS_REPO: ${{ inputs.ros_repo }}
           # Install CycloneDDS as the RMW implementation
           ADDITIONAL_DEBS: ros-${{ inputs.ros_distro }}-rmw-cyclonedds-cpp
-          DOCKER_RUN_OPTS: -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+          # The container has a TTY but no stdin, so a git credential prompt would wait until the job times out.
+          DOCKER_RUN_OPTS: -e RMW_IMPLEMENTATION=rmw_cyclonedds_cpp -e GIT_TERMINAL_PROMPT=0
           BEFORE_INSTALL_UPSTREAM_DEPENDENCIES: ${{ steps.detect.outputs.before_install }}
           AFTER_INSTALL_TARGET_DEPENDENCIES: ${{ steps.detect.outputs.pip_install }}
-          BEFORE_INIT: ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global url."https://{0}@github.com/".insteadOf "https://github.com/"', secrets.CI_PAT) || '' }}
+          # The token goes in a header because git drops credentials embedded in the URL when libcurl reports the URL without them.
+          BEFORE_INIT: >-
+            ${{ secrets.CI_PAT != '' && format('apt-get update -qq && apt-get install -y -qq git && git config --global http.https://github.com/.extraheader "AUTHORIZATION: basic $(printf "x-access-token:%s" "{0}" | base64 -w0)"', secrets.CI_PAT) || '' }}
 
       - name: Write badge artifact
         if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
