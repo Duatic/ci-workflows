@@ -275,10 +275,10 @@ package's dependencies on other packages in the org resolve only from the builde
 repository, so a build stops at the first such dependency. Signing and publishing belong to the
 archive host.
 
-**`reusable_release_publish.yml`** takes that artifact and publishes it into a signed archive root,
+**`reusable_release_publish.yml`** takes one of those artifacts and publishes it into a signed archive root,
 by delivering it to the publish host and calling `duatic_devtools`' archive tooling there. The
 signing key is never on the runner. It is `workflow_call` only and reads the artifact from the same
-run, so it is called after the build job rather than dispatched on its own. The package name and
+run, so it is called after the build job, once per architecture, rather than dispatched on its own. The package name and
 version are read from the `.deb` filename rather than taken as inputs, and both are refused unless
 they match a conservative character set, because they reach a command run on the host that holds the
 key. Needs `PUBLISH_HOST`, `PUBLISH_USER`, `PUBLISH_SSH_KEY`, `PUBLISH_HOST_KEY` and

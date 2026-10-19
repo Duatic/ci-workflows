@@ -103,7 +103,7 @@ jobs:
             -v "$RUNNER_TEMP/out:/out" \
             "ros:${ROS_DISTRO_TARGET}-ros-base" \
             /builder/build_pkg.sh "$PACKAGE" < /dev/null
-          # The artifact name promises this architecture, so it is checked rather than assumed.
+          # Fail unless a .deb of this architecture was produced.
           ls "$RUNNER_TEMP"/out/*_"$ARCH".deb >/dev/null \
             || { echo "::error::no ${ARCH} .deb produced"; ls "$RUNNER_TEMP/out"; exit 1; }
           echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
