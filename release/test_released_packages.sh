@@ -27,7 +27,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOL="$HERE/released_packages.py"
 WORK="$(mktemp -d)"
-trap 'rm -r "$WORK" 2>/dev/null' EXIT
+trap "rm -r '$WORK' 2>/dev/null" EXIT
 pass=0; fail=0
 
 check() {  # check <label> <expected-output>
@@ -43,7 +43,7 @@ pkg() {  # pkg <dir> <version>
     cat > "$WORK/$1/package.xml" <<EOF
 <?xml version="1.0"?>
 <package format="3">
-  <name>$(basename "$1")</name>
+  <name>$(basename "$(cd "$WORK/$1" && pwd)")</name>
   <version>$2</version>
   <description>test</description>
   <maintainer email="t@duatic.invalid">t</maintainer>
@@ -82,6 +82,13 @@ git checkout -q main && git checkout -qb moved-and-bumped
 mkdir -p group && git mv pkg_a group/pkg_a && pkg group/pkg_a 1.1.0
 git add -A && git commit -qm "release: pkg_a 1.1.0, moved"
 check "a package moved and bumped is released once, at its new path" "pkg_a 1.1.0 group/pkg_a"
+
+WORK="$WORK/root_pkg" && mkdir "$WORK" && cd "$WORK"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg . 1.0.0; git add -A && git commit -qm baseline
+git checkout -qb root
+pkg . 1.1.0; mkdir src && echo x > src/a.c && git add -A && git commit -qm "release: root_pkg 1.1.0"
+check "a package at the repository root is released" "root_pkg 1.1.0 ."
 
 echo
 echo "  $pass passed, $fail failed"

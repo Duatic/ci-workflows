@@ -87,7 +87,7 @@ def main():
     for f in touched:
         parts = Path(f).parts
         for i in range(len(parts)):
-            candidate = str(Path(*parts[: i + 1]) / "package.xml")
+            candidate = str(Path(*parts[:i]) / "package.xml")
             if candidate in touched or Path(candidate).exists():
                 packages[str(Path(candidate).parent)] = candidate
                 break
