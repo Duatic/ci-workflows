@@ -27,7 +27,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TOOL="$HERE/released_packages.py"
 WORK="$(mktemp -d)"
-trap "rm -r '$WORK' 2>/dev/null" EXIT
+trap 'rm -r "$WORK" 2>/dev/null' EXIT
 pass=0; fail=0
 
 check() {  # check <label> <expected-output>
@@ -89,6 +89,8 @@ pkg . 1.0.0; git add -A && git commit -qm baseline
 git checkout -qb root
 pkg . 1.1.0; mkdir src && echo x > src/a.c && git add -A && git commit -qm "release: root_pkg 1.1.0"
 check "a package at the repository root is released" "root_pkg 1.1.0 ."
+
+WORK="${WORK%/root_pkg}"  # so the trap removes the outer repository too
 
 echo
 echo "  $pass passed, $fail failed"

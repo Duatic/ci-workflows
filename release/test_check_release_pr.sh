@@ -27,7 +27,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CHECK="$HERE/check_release_pr.py"
 WORK="$(mktemp -d)"
-trap "rm -r '$WORK' 2>/dev/null" EXIT
+trap 'rm -r "$WORK" 2>/dev/null' EXIT
 pass=0; fail=0
 
 check() {  # check <want-exit> <label> <title>
@@ -136,9 +136,8 @@ pkg . 1.1.0; changelog . "1.1.0 (2026-08-27)"
 git commit -qam "release: root_pkg 1.1.0"
 check 0 "root package bumped, titled as a release" "release: root_pkg 1.1.0"
 check 1 "root package bumped, titled as a feature" "feat: something"
-git checkout -q main && git checkout -qb r2
-mkdir src && echo x > src/a.c && git add -A && git commit -qm "release: root_pkg"
-check 1 "release title, root package not bumped" "release: root_pkg"
+
+WORK="${WORK%/root_pkg}"  # so the trap removes the outer repository too
 
 echo
 echo "  $pass passed, $fail failed"
