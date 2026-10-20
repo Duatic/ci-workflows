@@ -57,7 +57,7 @@ tag workflows. They are opt-in per repo and unrelated to the CI matrix. See
 | `GIST_TOKEN` | no | PAT with `gist` scope. Required only if `badge_gist_id` is set. Pass via `secrets: inherit`. |
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
-- **`upstream_workspace`** - auto-detected: `reusable_ici.yml` uses `repos.list` if it exists at the repo root, otherwise nothing.
+- **`upstream_workspace`** - auto-detected: `reusable_ici.yml` uses `repos.list` if it exists at the repo root, otherwise nothing. The `repos.list` of every listed git repository is followed too, at the version it is pinned to, so a repo only lists its direct dependencies. Two lists that name the same repository with a different url or version fail the build; align them, there is no override. The expansion runs `upstream/expand_repos.py` with the runner's `python3`, which needs PyYAML.
 - **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) - drop an `Aptfile` at the consumer repo root (one package per line, `#` comments allowed); picked up automatically. Most repos don't need this file at all.
 - **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) - drop a `requirements.txt` file into the package that needs them. All of them are `pip install`ed together (full dependency tree, `--break-system-packages`) after target dependencies are installed, before build/test. Most repos don't need this file at all.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator runs a single job that fails immediately with a message to mark the PR ready for review, instead of building anything. Marking the PR "Ready for review" runs the real matrix.
@@ -378,7 +378,7 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 
 ## Leaf workflows (internal, not called directly by product repos)
 
-- **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
+- **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list` (followed recursively), `Aptfile`, and `requirements.txt`.
 - **`pre-commit.yml`** - runs `pre-commit` across all files.
 
 ## Requirements on consumer repos

@@ -59,11 +59,41 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the scripts with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
       - name: Detect upstream workspace, extra apt dependencies, and pip requirements
         id: detect
+        env:
+          CI_PAT: ${{ secrets.CI_PAT }}
+          SELF_URL: ${{ github.server_url }}/${{ github.repository }}
         run: |
           if [ -f repos.list ]; then
-            echo "upstream_workspace=repos.list" >> "$GITHUB_OUTPUT"
+            # Flatten the repos.list files of every dependency into one list; disagreeing pins fail here.
+            if [ -n "$CI_PAT" ]; then
+              export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader
+              GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$CI_PAT" | base64 -w0)"
+              export GIT_CONFIG_VALUE_0
+            fi
+            GIT_TERMINAL_PROMPT=0 python3 .checks/upstream/expand_repos.py repos.list \
+              --exclude-url "$SELF_URL" > .upstream.repos
+            cat .upstream.repos
+            echo "upstream_workspace=.upstream.repos" >> "$GITHUB_OUTPUT"
           else
             echo "upstream_workspace=" >> "$GITHUB_OUTPUT"
           fi
