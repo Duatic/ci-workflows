@@ -44,7 +44,7 @@ pkg() {
     cat > "$WORK/$1/package.xml" <<EOF
 <?xml version="1.0"?>
 <package format="3">
-  <name>$(basename "$1")</name>
+  <name>$(basename "$(cd "$WORK/$1" && pwd)")</name>
   <version>$2</version>
   <description>test</description>
   <maintainer email="t@duatic.invalid">t</maintainer>
@@ -125,6 +125,19 @@ check 0 "moved at the same version, titled as a refactor" "refactor: move pkg_a"
 pkg group/pkg_a 1.1.0; changelog group/pkg_a "1.1.0 (2026-08-27)"
 git add -A && git commit -qm "feat: bump while moving"
 check 1 "moved and bumped without a release title" "feat: bump while moving"
+
+echo "=== a package at the repository root is seen ==="
+WORK="$WORK/root_pkg" && mkdir "$WORK" && cd "$WORK"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg . 1.0.0; changelog . "1.0.0 (2026-01-01)"
+git add -A && git commit -qm baseline
+git checkout -qb r1
+pkg . 1.1.0; changelog . "1.1.0 (2026-08-27)"
+git commit -qam "release: root_pkg 1.1.0"
+check 0 "root package bumped, titled as a release" "release: root_pkg 1.1.0"
+check 1 "root package bumped, titled as a feature" "feat: something"
+
+WORK="${WORK%/root_pkg}"  # so the trap removes the outer repository too
 
 echo
 echo "  $pass passed, $fail failed"

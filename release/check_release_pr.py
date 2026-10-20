@@ -122,7 +122,7 @@ def main():
     for f in touched:
         parts = Path(f).parts
         for i in range(len(parts)):
-            candidate = str(Path(*parts[: i + 1]) / "package.xml")
+            candidate = str(Path(*parts[:i]) / "package.xml")
             if candidate in touched or Path(candidate).exists():
                 packages[str(Path(candidate).parent)] = candidate
                 break
@@ -133,7 +133,7 @@ def main():
     for pkg_dir, pkg_xml in sorted(packages.items()):
         old = version_at(merge_base, pkg_xml)
         new = version_at(args.head, pkg_xml)
-        name = Path(pkg_dir).name or pkg_xml
+        name = Path(pkg_dir).name or name_at(args.head, pkg_xml) or pkg_xml
 
         if new is None:
             continue  # deleted, or not a package after all
