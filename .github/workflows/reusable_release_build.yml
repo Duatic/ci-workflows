@@ -109,8 +109,8 @@ jobs:
           echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
 
       # Debug symbols are a .ddeb, which a *.deb glob misses. build_pkg.sh collects them and the
-      # archive indexes them, so leaving them here is where they would be lost. The source tarball
-      # is published beside the package in an open root, which refuses a package without one.
+      # archive indexes them, so leaving them here is where they would be lost. A package declaring
+      # <duatic_publish_source> also has a source tarball, which the archive refuses to do without.
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.build.outputs.artifact }}-${{ matrix.arch }}

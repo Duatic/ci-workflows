@@ -268,7 +268,8 @@ on the pull request is checked again here, in case a merge ever bypasses that ch
 **`reusable_release_build.yml`** builds one package into a `.deb` with `duatic_devtools`' builder,
 once for amd64 on `runner` and once for arm64 on `arm64_runner` (default `ubuntu-24.04-arm`), both
 native. Each architecture is uploaded as its own artifact, `<artifact>-amd64` and `<artifact>-arm64`,
-holding the `.deb`, its debug symbols and the package's source tarball.
+holding the `.deb`, its debug symbols and, when the package declares `<duatic_publish_source>`, its
+source tarball.
 It takes a tag to check out and the package to build inside it - either
 a `<package>/<version>` tag or a repo-wide `v<version>` tag names the package explicitly, so the
 build does not need to guess it from the tag's shape. It is not wired into any repository yet: a

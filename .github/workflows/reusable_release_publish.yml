@@ -113,7 +113,7 @@ jobs:
           target="$PUBLISH_USER@$HOST"
           # Everything the build produced, not just the .deb the version was read from: the
           # debug symbols ship as a .ddeb and the archive indexes them alongside, and an open
-          # root publishes the source tarball beside the package.
+          # root publishes a source tarball beside the package that declares one.
           scp deb/* "$target:~/archive/out/"
           # Named explicitly: a non-interactive ssh reads no profile, so nothing the publish
           # host exports in a login shell reaches this command.
