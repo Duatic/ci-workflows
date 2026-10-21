@@ -65,6 +65,13 @@ def git(*args, allow_fail=False):
     return r.stdout
 
 
+def has_packages(head):
+    return any(
+        os.path.basename(f) == "package.xml"
+        for f in git("ls-tree", "-r", "--name-only", head).split()
+    )
+
+
 def touched_changelogs(base, head):
     names = git("diff", "--name-only", f"{base}...{head}").split()
     return sorted(n for n in names if os.path.basename(n) == "CHANGELOG.rst" and os.path.exists(n))
@@ -82,11 +89,15 @@ def underlines(text):
     return bad
 
 
-def check(path):
+def check(path, packages=True):
     problems = []
     text = open(path, encoding="utf-8").read()
 
-    if not os.path.exists(os.path.join(os.path.dirname(path), "package.xml")):
+    # A repository without packages keeps one CHANGELOG.rst at its root, which no .deb reads.
+    root_of_plain_repo = not packages and path == "CHANGELOG.rst"
+    if not root_of_plain_repo and not os.path.exists(
+        os.path.join(os.path.dirname(path), "package.xml")
+    ):
         problems.append(
             "no package.xml beside it: bloom looks for the changelog next to the manifest"
         )
@@ -140,9 +151,10 @@ def main():
         print("no CHANGELOG.rst touched")
         return 0
 
+    packages = has_packages(args.head)
     bad = 0
     for path in paths:
-        problems = check(path)
+        problems = check(path, packages)
         if problems:
             bad += 1
             for p in problems:
