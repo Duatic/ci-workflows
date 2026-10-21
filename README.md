@@ -13,15 +13,16 @@ uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
 `v1` always points at the latest compatible `v1.x.y` release. Immutable `v1.0.0`-style tags exist
 for rollback/bisection. Breaking input changes bump the major (`@v2`).
 
-Releases are cut via the **Release** workflow (`workflow_dispatch`, `.github/workflows/release.yml`)
-from the [Actions tab](https://github.com/Duatic/ci-workflows/actions/workflows/release.yml): pick
-`patch`/`minor`/`major`, and it computes the next version from the latest tag, creates the immutable
-`vX.Y.Z` tag, force-moves the corresponding major tag (`vX`) to the same commit, and publishes a
-GitHub Release with auto-generated notes.
+Releases are cut via the **Self-release** workflow (`workflow_dispatch`,
+`.github/workflows/self-release.yml`) from the
+[Actions tab](https://github.com/Duatic/ci-workflows/actions/workflows/self-release.yml). It opens a
+`release: X.Y.Z` pull request that adds the version's section to `CHANGELOG.rst`, the bump derived
+from the commits unless one is picked. Merging it creates the immutable `vX.Y.Z` tag, force-moves
+the major tag (`vX`) to the same commit, and publishes a GitHub Release with that section as its
+notes. See [Changelog releases](#changelog-releases).
 
-That is how this and the other tooling repositories version. ROS package repositories release per
-package instead, with immutable `<package>/X.Y.Z` tags and no moving major; see
-[Package releases](#package-releases).
+ROS package repositories release per package instead, with immutable `<package>/X.Y.Z` tags and no
+moving major; see [Package releases](#package-releases).
 
 ## What consumers call
 
@@ -39,6 +40,10 @@ never runs on its own. See [Claude code review](#claude-code-review).
 release mode by which prepare workflow its own `release.yml` calls; both share the same checks and
 tag workflows. They are opt-in per repo and unrelated to the CI matrix. See
 [Package releases](#package-releases).
+
+**`reusable_prepare_changelog_release.yml`** and **`reusable_changelog_release_tag.yml`** do the
+same for a repository holding no ROS packages, versioned by its `v<version>` tags with a
+`CHANGELOG.rst` at its root. See [Changelog releases](#changelog-releases).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
 
@@ -379,6 +384,67 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | Secret | Workflow | Required | Description |
 |---|---|---|---|
 | `RELEASE_PAT` | prepare, prepare-repo | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
+
+## Changelog releases
+
+A repository holding no `package.xml` releases as a whole. Its version is its highest `v<version>`
+tag, and its notes live in `CHANGELOG.rst` at the root, in the same format as a package's,
+`Upcoming changes` included.
+
+**`reusable_prepare_changelog_release.yml`** opens the pull request. It takes every commit since
+the last `v<version>` tag, or the whole history before the first one, writes them as the next
+version's section in `CHANGELOG.rst` (creating the file on the first release), and opens a draft
+pull request titled `release: <version>`. The bump is derived from the commits the same way as for
+a package, and `bump` overrides it. Only `CHANGELOG.rst` changes: there is no version file.
+
+**`reusable_changelog_release_tag.yml`** runs when that pull request merges. It tags the merge
+commit `v<version>`, moves `v<major>` to it unless `move_major_tag` is `false`, and publishes a
+GitHub Release with the version's section as its notes. A pull request whose title does not start
+with `release:` is left alone.
+
+The `release-check` and `title-check` actions check such a repository on its root `CHANGELOG.rst`:
+a new version section needs a `release:` title naming it, must come after the last tag, and a
+`release:` title needs a new section.
+
+```yaml
+# .github/workflows/release.yml
+name: Release
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Override the bump derived from the commits'
+        type: choice
+        options: [derived, major, minor, patch]
+        default: derived
+  pull_request:
+    types: [closed]
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    uses: Duatic/ci-workflows/.github/workflows/reusable_prepare_changelog_release.yml@v1
+    with:
+      bump: ${{ inputs.bump }}
+    secrets: inherit
+
+  tag:
+    if: github.event_name == 'pull_request' && github.event.pull_request.merged
+    permissions:
+      contents: write
+    uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_release_tag.yml@v1
+```
+
+| Input | Workflow | Required | Default | Description |
+|---|---|---|---|---|
+| `bump` | prepare | no | `derived` | `major`, `minor` or `patch`; `derived` or empty takes it from the commits. |
+| `move_major_tag` | tag | no | `true` | Move `v<major>` to the release, for callers pinning the major version. |
+| `runner` | prepare, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
+
+The prepare workflow needs `RELEASE_PAT`, as above.
+
+`release.yml`, which tags straight from a dispatch with auto-generated notes and no changelog,
+remains callable for repositories not yet moved to these.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
