@@ -11,7 +11,7 @@ on:
   workflow_call:
     inputs:
       artifact:
-        description: 'Artifact holding the .deb, as reusable_release_build.yml named it'
+        description: 'Artifact holding the .deb, as reusable_release_build.yml named it: <artifact>-amd64 or <artifact>-arm64'
         required: true
         type: string
       root:
