@@ -42,7 +42,7 @@ tag workflows. They are opt-in per repo and unrelated to the CI matrix. See
 [Package releases](#package-releases).
 
 **`reusable_prepare_changelog_release.yml`** and **`reusable_changelog_release_tag.yml`** do the
-same for a repository holding no ROS packages, versioned by its `v<version>` tags with a
+same for a repository that is not itself a ROS package, versioned by its `v<version>` tags with a
 `CHANGELOG.rst` at its root. See [Changelog releases](#changelog-releases).
 
 ### `ci_orchestrator.yml` - consumer-facing entry point
@@ -387,9 +387,10 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 
 ## Changelog releases
 
-A repository holding no `package.xml` releases as a whole. Its version is its highest `v<version>`
-tag, and its notes live in `CHANGELOG.rst` at the root, in the same format as a package's,
-`Upcoming changes` included.
+A repository with no `package.xml` at its root releases as a whole. Its version is its highest
+`v<version>` tag, and its notes live in `CHANGELOG.rst` at the root, in the same format as a
+package's, `Upcoming changes` included. A `package.xml` deeper in it, such as a test fixture, is not
+released.
 
 **`reusable_prepare_changelog_release.yml`** opens the pull request. It takes every commit since
 the last `v<version>` tag, or the whole history before the first one, writes them as the next
@@ -402,7 +403,8 @@ commit `v<version>`, moves `v<major>` to it unless `move_major_tag` is `false`, 
 GitHub Release with the version's section as its notes. A pull request whose title does not start
 with `release:` is left alone.
 
-The `release-check` and `title-check` actions check such a repository on its root `CHANGELOG.rst`:
+Once that `CHANGELOG.rst` exists, the `release-check` and `title-check` actions check the repository
+on it:
 a new version section needs a `release:` title naming it, must come after the last tag, and a
 `release:` title needs a new section.
 

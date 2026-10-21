@@ -65,13 +65,6 @@ def git(*args, allow_fail=False):
     return r.stdout
 
 
-def has_packages(head):
-    return any(
-        os.path.basename(f) == "package.xml"
-        for f in git("ls-tree", "-r", "--name-only", head).split()
-    )
-
-
 def touched_changelogs(base, head):
     names = git("diff", "--name-only", f"{base}...{head}").split()
     return sorted(n for n in names if os.path.basename(n) == "CHANGELOG.rst" and os.path.exists(n))
@@ -89,13 +82,12 @@ def underlines(text):
     return bad
 
 
-def check(path, packages=True):
+def check(path):
     problems = []
     text = open(path, encoding="utf-8").read()
 
-    # A repository without packages keeps one CHANGELOG.rst at its root, which no .deb reads.
-    root_of_plain_repo = not packages and path == "CHANGELOG.rst"
-    if not root_of_plain_repo and not os.path.exists(
+    # A CHANGELOG.rst at the root with no package.xml beside it releases the repository, not a .deb.
+    if path != "CHANGELOG.rst" and not os.path.exists(
         os.path.join(os.path.dirname(path), "package.xml")
     ):
         problems.append(
@@ -151,10 +143,9 @@ def main():
         print("no CHANGELOG.rst touched")
         return 0
 
-    packages = has_packages(args.head)
     bad = 0
     for path in paths:
-        problems = check(path, packages)
+        problems = check(path)
         if problems:
             bad += 1
             for p in problems:

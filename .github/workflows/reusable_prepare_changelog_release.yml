@@ -1,6 +1,6 @@
 name: prepare changelog release
-# Central, org-wide reusable workflow. Opens the pull request that releases a repository holding no
-# ROS packages. Its version is its highest v<version> tag; the commits since then become the next
+# Central, org-wide reusable workflow. Opens the pull request that releases a repository that is
+# not itself a ROS package. Its version is its highest v<version> tag; the commits since then become the next
 # version's section in CHANGELOG.rst at the root, created on the first release, and the bump is
 # derived from them unless bump overrides it.
 #

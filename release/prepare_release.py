@@ -34,10 +34,11 @@ commit history to derive one from. A package with nothing to report gets "No cha
 being skipped. Packages named in release-exclude.txt at the repository root (one per line, `#`
 comments allowed) are left untouched entirely.
 
---changelog releases a repository that holds no ROS packages. Its version is its v<version> tag
-with the highest version, and the release writes a section into CHANGELOG.rst at its root,
-creating the file if needed. The bump is derived from every commit since that tag, or from the
-whole history before the first one. --bump overrides it.
+--changelog releases a repository that is not itself a ROS package: no package.xml at its root,
+whatever lies deeper. Its version is its v<version> tag with the highest version, and the release
+writes a section into CHANGELOG.rst at its root, creating the file if needed. The bump is derived
+from every commit since that tag, or from the whole history before the first one. --bump
+overrides it.
 
 Either way, each commit subject is read with the grammar the title check enforces:
 
@@ -524,9 +525,9 @@ def release_repo(bump, summary_path, version_out_path):
 
 
 def release_changelog(bump_override, summary_path, version_out_path):
-    if all_packages():
+    if Path("package.xml").exists():
         print(
-            "this repository holds ROS packages: release them with --package or --repo",
+            "this repository is a ROS package: release it with --package",
             file=sys.stderr,
         )
         return 1
@@ -580,7 +581,7 @@ def main():
     mode.add_argument(
         "--changelog",
         action="store_true",
-        help="release a repository without ROS packages, versioned by its v<version> tags",
+        help="release a repository that is not a ROS package, versioned by its v<version> tags",
     )
     ap.add_argument(
         "--bump",

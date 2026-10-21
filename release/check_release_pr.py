@@ -36,9 +36,10 @@ Versions are per package and independent, so every check below is per package. A
 several at once, or none. A package new to the repository is only a release in a `release:` PR, and
 one moved to another directory is compared against its version at the old path.
 
-A repository with no package.xml at all is versioned by its CHANGELOG.rst at the root and its
-v<version> tags instead: a release adds one version section there, ahead of the base's and of every
-tag, and a section added in any other pull request is a release nobody titled as one.
+A repository whose root holds CHANGELOG.rst and no package.xml is versioned by that changelog and
+its v<version> tags instead, and any package.xml deeper in it is not released: a release adds one
+version section there, ahead of the base's and of every tag, and a section added in any other pull
+request is a release nobody titled as one.
 
 Usage:  check_release_pr.py --base origin/main [--head HEAD] [--title "release: ..."]
 Exit 0 if consistent, 1 if not.
@@ -122,7 +123,7 @@ def latest_repo_tag():
 
 
 def check_changelog_repo(merge_base, head, title, is_release):
-    """The release check for a repository without ROS packages. Returns the exit code."""
+    """The release check for a repository released by its root CHANGELOG.rst. Returns the exit code."""
     path = "CHANGELOG.rst"
     added = changelog_versions(head, path) - changelog_versions(merge_base, path)
     problems = []
@@ -179,10 +180,8 @@ def main():
     merge_base = git("merge-base", args.base, args.head).strip() or args.base
     touched = [p for p in git("diff", "--name-only", f"{merge_base}..{args.head}").split() if p]
 
-    if not any(
-        Path(f).name == "package.xml"
-        for f in git("ls-tree", "-r", "--name-only", args.head).split()
-    ):
+    at_root = git("ls-tree", "--name-only", args.head).split()
+    if "CHANGELOG.rst" in at_root and "package.xml" not in at_root:
         is_release = bool(RELEASE_TITLE.match(args.title.strip()))
         return check_changelog_repo(merge_base, args.head, args.title, is_release)
 

@@ -347,10 +347,14 @@ git add -A && git commit -qm "release: 2.1.3"
              || { printf '  FAIL  %-56s\n' "check_release_pr.py accepts it"; fail=$((fail+1)); sed 's/^/          /' "$OUT"; }
 git checkout -q main
 
-echo "=== a repository without packages releases from its v tags and a root CHANGELOG.rst ==="
-check 1 "--changelog refuses a repository holding packages" --changelog
+echo "=== a repository that is not a ROS package releases from its v tags and a root CHANGELOG.rst ==="
+REPO="$WORK/rootpkg"; mkdir "$REPO"; cd "$REPO"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg . 1.0.0 && git add -A && git commit -qm "feat: a package at the root"
+check 1 "--changelog refuses a repository that is a ROS package" --changelog
 REPO="$WORK/plain"; mkdir "$REPO"; cd "$REPO"
 git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg tests/fixture 0.1.0
 touch_commit . "feat: first feature"
 touch_commit . "chore: tidy"
 check 0 "no tag yet: the whole history, from 0.0.0" --changelog --version-out out_version.txt
@@ -393,6 +397,12 @@ git checkout -qb no-section
 touch_commit . "docs: a readme"
 pr_check 1 "a release title with no new section" "release: 0.1.1"
 pr_check 0 "ordinary work" "docs: a readme"
+git checkout -q main
+
+git checkout -qb fixture
+pkg tests/fixture 0.2.0
+git add -A && git commit -qm "test: bump a fixture"
+pr_check 0 "a deeper package.xml is not released" "test: bump a fixture"
 git checkout -q main
 
 git checkout -qb backwards
