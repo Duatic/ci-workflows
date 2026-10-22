@@ -333,8 +333,12 @@ def summary_one(name, old, new, derived, chosen, since, entries, headers):
         lines.append(f"Bump: **{chosen}**, overriding the derived **{derived}**.")
     if BUMPS.index(chosen) < BUMPS.index(derived):
         lines.append("")
-        lines.append("**The override releases breaking changes under a non-major version:**")
-        lines += [f"- {s}" for _, _, s, b in entries if b]
+        if derived == "major":
+            lines.append("**The override releases breaking changes under a non-major version:**")
+            lines += [f"- {s}" for _, _, s, b in entries if b]
+        else:
+            lines.append("**The override releases new features under a patch version:**")
+            lines += [f"- {s}" for _, k, s, _ in entries if k in ("feat", "deprecate")]
     if headers:
         lines += ["", "Headers changed, so the API or ABI may have:", ""]
         lines += [f"- `{h}`" for h in headers]

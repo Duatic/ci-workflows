@@ -130,6 +130,12 @@ check 0 "the same without the override" --package pkg_a
 expect "a BREAKING CHANGE footer is a major" 1 '<version>3.0.0</version>' pkg_a/package.xml
 release_commit pkg_a 3.0.0
 
+touch_commit pkg_a "feat: v"
+check 0 "--bump patch over a derived minor" --package pkg_a --bump patch
+expect "no breaking-change warning for a feature" 0 'breaking changes' "$OUT"
+expect "the feature is named under its own warning" 1 '^- feat: v$' <(grep -A1 'new features under a patch' "$OUT")
+git checkout -q -- pkg_a
+
 echo "=== only changes worth telling a user about are kept ==="
 touch_commit pkg_a "chore: a"
 touch_commit pkg_a "ci: b"
