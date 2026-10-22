@@ -262,7 +262,9 @@ publishes a GitHub Release with that version's changelog section as its notes. A
 request also bumps several packages at once, but is tagged by the workflow below instead, so that
 a whole repo release reads as one thing rather than as many simultaneous per-package ones. Package
 tags never move. The calling job grants `contents: write`, and the pull request is squash- or
-merge-committed; after a rebase merge there is nothing for it to find.
+merge-committed; after a rebase merge there is nothing for it to find. Its `released` output is a
+JSON list of `{package, version, tag}` for what it tagged, `[]` otherwise, so a `build` job after it
+can build exactly those packages.
 
 **`reusable_repo_release_tag.yml`** runs when a repo-wide release pull request merges. Every
 included package shares one version by construction, so one tag, `v<version>`, is created at the
@@ -334,6 +336,18 @@ jobs:
     permissions:
       contents: write
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_tag.yml@v1
+
+  # Builds the .debs of whatever the merge released, for amd64 and arm64.
+  build:
+    needs: tag
+    if: needs.tag.outputs.released != '[]'
+    strategy:
+      matrix:
+        include: ${{ fromJSON(needs.tag.outputs.released) }}
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v1
+    with:
+      tag: ${{ matrix.tag }}
+      package: ${{ matrix.package }}
 ```
 
 Per repo:

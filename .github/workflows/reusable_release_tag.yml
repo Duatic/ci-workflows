@@ -1,7 +1,8 @@
 name: release tag
 # Central, org-wide reusable workflow. When a release pull request merges, tags each package it
 # released as <package>/<version> at the merge commit and publishes a GitHub Release per tag with
-# that version's changelog section as its notes. A package tag never moves.
+# that version's changelog section as its notes. A package tag never moves. The released output
+# lists what it tagged, so a caller can build those packages next.
 #
 # The calling job must grant contents: write; a called workflow cannot raise the token above what
 # its caller holds. Requires a squash- or merge-committed pull request: a rebase merge's first
@@ -27,6 +28,10 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+    outputs:
+      released:
+        description: 'JSON list of {package, version, tag} it tagged; [] when the pull request released nothing'
+        value: ${{ jobs.tag.outputs.released }}
 
 permissions:
   contents: write
@@ -34,6 +39,8 @@ permissions:
 jobs:
   tag:
     runs-on: ${{ inputs.runner }}
+    outputs:
+      released: ${{ steps.tag.outputs.released || '[]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,6 +80,7 @@ jobs:
           echo "$RUNNER_TEMP/gh_${version}_linux_${arch}/bin" >> "$GITHUB_PATH"
 
       - name: Tag each released package and publish its notes
+        id: tag
         env:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ github.event.pull_request.merge_commit_sha }}
@@ -113,3 +121,8 @@ jobs:
               || gh release create "$tag" --title "${name} ${version}" --notes-file "$RUNNER_TEMP/notes.md"
             echo "released ${tag}"
           done < "$RUNNER_TEMP/released"
+          python3 - "$RUNNER_TEMP/released" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          rows = [line.split() for line in open(sys.argv[1]) if line.strip()]
+          print("released=" + json.dumps([{"package": n, "version": v, "tag": f"{n}/{v}"} for n, v, *_ in rows]))
+          PY
