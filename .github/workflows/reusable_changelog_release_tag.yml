@@ -1,0 +1,119 @@
+name: changelog release tag
+# Central, org-wide reusable workflow. When the release pull request of a repository that is not
+# itself a ROS package merges, tags the merge commit v<version>, moves the major tag v<major> to it unless
+# move_major_tag is false, and publishes a GitHub Release with that version's CHANGELOG.rst section
+# as its notes. Does nothing for a pull request whose title does not start with release:.
+#
+# The calling job must grant contents: write; a called workflow cannot raise the token above what
+# its caller holds.
+#
+# Called by a repository on the close of a pull request:
+#
+#   on:
+#     pull_request:
+#       types: [closed]
+#   jobs:
+#     tag:
+#       if: github.event.pull_request.merged
+#       permissions:
+#         contents: write
+#       uses: Duatic/ci-workflows/.github/workflows/reusable_changelog_release_tag.yml@v1
+
+on:
+  workflow_call:
+    inputs:
+      move_major_tag:
+        description: 'Move v<major> to the new release, for callers pinning the major version.'
+        default: true
+        required: false
+        type: boolean
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  tag:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the scripts with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      # Preinstalled on GitHub-hosted runners; a self-hosted runner may not have it.
+      - name: Ensure the GitHub CLI is available
+        run: |
+          command -v gh >/dev/null && exit 0
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64) arch=arm64 ;;
+            *) echo "::error::unsupported architecture for gh: $(uname -m)"; exit 1 ;;
+          esac
+          version=2.62.0
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${version}/gh_${version}_linux_${arch}.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gh_${version}_linux_${arch}/bin" >> "$GITHUB_PATH"
+
+      - name: Tag the release and publish its notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE: ${{ github.event.pull_request.merge_commit_sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          MOVE_MAJOR: ${{ inputs.move_major_tag }}
+        run: |
+          if ! printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:'; then
+            echo "not a release pull request; nothing to tag"
+            exit 0
+          fi
+          if [ -f package.xml ]; then
+            echo "::error::this repository is a ROS package; tag it with reusable_release_tag.yml"
+            exit 1
+          fi
+          version="$(printf '%s' "$PR_TITLE" | sed -nE 's/^release(\([^)]*\))?!?:[[:space:]]*([0-9]+\.[0-9]+\.[0-9]+)[[:space:]]*$/\2/ip')"
+          if [ -z "$version" ]; then
+            echo "::error::a repository release is titled \"release: <version>\", not \"${PR_TITLE}\""
+            exit 1
+          fi
+          python3 .checks/release/changelog_section.py CHANGELOG.rst "$version" > "$RUNNER_TEMP/notes.md"
+
+          tag="v${version}"
+          at=$(git rev-parse -q --verify "refs/tags/${tag}^{commit}" || true)
+          if [ -n "$at" ] && [ "$at" != "$MERGE" ]; then
+            echo "::error::tag ${tag} already exists at ${at}"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          [ -n "$at" ] || git tag "$tag" "$MERGE"
+          git push origin "$tag"
+          if [ "$MOVE_MAJOR" = true ]; then
+            major="v${version%%.*}"
+            git tag -f "$major" "$MERGE"
+            git push -f origin "refs/tags/${major}"
+          fi
+          gh release view "$tag" >/dev/null 2>&1 \
+            || gh release create "$tag" --title "$tag" --notes-file "$RUNNER_TEMP/notes.md"
+          echo "released ${tag}"

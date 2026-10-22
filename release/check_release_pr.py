@@ -36,6 +36,11 @@ Versions are per package and independent, so every check below is per package. A
 several at once, or none. A package new to the repository is only a release in a `release:` PR, and
 one moved to another directory is compared against its version at the old path.
 
+A repository whose root holds CHANGELOG.rst and no package.xml is versioned by that changelog and
+its v<version> tags instead, and any package.xml deeper in it is not released: a release adds one
+version section there, ahead of the base's and of every tag, and a section added in any other pull
+request is a release nobody titled as one.
+
 Usage:  check_release_pr.py --base origin/main [--head HEAD] [--title "release: ..."]
 Exit 0 if consistent, 1 if not.
 """
@@ -107,6 +112,64 @@ def changelog_versions(ref, path):
     return {m.group(1) for m in SECTION.finditer(blob)}
 
 
+def latest_repo_tag():
+    """The highest version among the v<version> tags, or None."""
+    versions = [
+        t[1:]
+        for t in git("tag", "--list", "v*").split()
+        if as_tuple(t[1:]) and len(as_tuple(t[1:])) == 3
+    ]
+    return max(versions, key=as_tuple) if versions else None
+
+
+def check_changelog_repo(merge_base, head, title, is_release):
+    """The release check for a repository released by its root CHANGELOG.rst. Returns the exit code."""
+    path = "CHANGELOG.rst"
+    added = changelog_versions(head, path) - changelog_versions(merge_base, path)
+    problems = []
+    new = None
+    if len(added) > 1:
+        problems.append(
+            f"{path} gains {len(added)} version sections ({', '.join(sorted(added))}); a release adds one"
+        )
+    elif added:
+        new = added.pop()
+        before = [
+            v
+            for v in changelog_versions(merge_base, path) | {latest_repo_tag() or "0.0.0"}
+            if as_tuple(v)
+        ]
+        prior = max(before, key=as_tuple)
+        if as_tuple(new) <= as_tuple(prior):
+            problems.append(f"{path} adds {new}, which is not after {prior}")
+        if not is_release:
+            problems.append(
+                f'{path} adds a {new} section but the title is not "release: ...". A version section '
+                "is a release whether or not it is labelled one, and the label is what tells the "
+                "pipeline to tag it"
+            )
+        repo_title = REPO_RELEASE_TITLE.match(title.strip())
+        if repo_title and repo_title.group(2) != new:
+            problems.append(f"titled as a release of {repo_title.group(2)}, but {path} adds {new}")
+    elif is_release:
+        problems.append(
+            f'titled "release: ..." but {path} at the root gains no version section, so there is '
+            "nothing to release"
+        )
+
+    if new:
+        print(f"  release  the repository  -> {new}")
+    else:
+        print("  no version changes" + (" (not a release PR)" if not is_release else ""))
+    for p in problems:
+        print(f"  PROBLEM  {p}")
+    if problems:
+        print(f"\n  {len(problems)} problem(s)")
+        return 1
+    print("\n  consistent: the repository released" if new else "\n  consistent")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", required=True, help="what the PR merges into, e.g. origin/main")
@@ -116,6 +179,11 @@ def main():
 
     merge_base = git("merge-base", args.base, args.head).strip() or args.base
     touched = [p for p in git("diff", "--name-only", f"{merge_base}..{args.head}").split() if p]
+
+    at_root = git("ls-tree", "--name-only", args.head).split()
+    if "CHANGELOG.rst" in at_root and "package.xml" not in at_root:
+        is_release = bool(RELEASE_TITLE.match(args.title.strip()))
+        return check_changelog_repo(merge_base, args.head, args.title, is_release)
 
     # Every package the PR touches at all, so a changelog edited without a bump is still seen.
     packages = {}

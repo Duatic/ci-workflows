@@ -34,6 +34,12 @@ commit history to derive one from. A package with nothing to report gets "No cha
 being skipped. Packages named in release-exclude.txt at the repository root (one per line, `#`
 comments allowed) are left untouched entirely.
 
+--changelog releases a repository that is not itself a ROS package: no package.xml at its root,
+whatever lies deeper. Its version is its v<version> tag with the highest version, and the release
+writes a section into CHANGELOG.rst at its root, creating the file if needed. The bump is derived
+from every commit since that tag, or from the whole history before the first one. --bump
+overrides it.
+
 Either way, each commit subject is read with the grammar the title check enforces:
 
   * "!" before the colon, or a "BREAKING CHANGE:" footer, marks a breaking change;
@@ -47,6 +53,7 @@ anything there that is not a flat bullet stops the release instead of being drop
 
 Usage:  prepare_release.py --package NAME [--bump B] [--path DIR] [--summary FILE] [--version-out FILE]
         prepare_release.py --repo --bump B [--path DIR] [--summary FILE] [--version-out FILE]
+        prepare_release.py --changelog [--bump B] [--path DIR] [--summary FILE] [--version-out FILE]
 Exit 0 with every touched package.xml and CHANGELOG.rst rewritten, 1 with nothing written.
 """
 
@@ -75,6 +82,8 @@ KEPT = ["feat", "deprecate", "fix", "perf", "refactor", "docs"]
 DROPPED = {"chore", "ci", "test", "build", "release"}
 BUMPS = ["patch", "minor", "major"]
 WIDTH = 100
+REPO_TAG = re.compile(r"^v(\d+\.\d+\.\d+)$")
+CHANGELOG_HEADER = "^^^^^^^^^\nChangelog\n^^^^^^^^^\n"
 
 
 def git(*args, allow_fail=False):
@@ -137,6 +146,16 @@ def last_tag(name):
         v = as_tuple(tag[len(name) + 1 :])
         if v and len(v) == 3 and (best is None or v > best[0]):
             best = (v, tag)
+    return best[1] if best else None
+
+
+def last_repo_tag():
+    """The v<version> tag with the highest version, or None."""
+    best = None
+    for tag in git("tag", "--list", "v*").split():
+        m = REPO_TAG.match(tag)
+        if m and (best is None or as_tuple(m.group(1)) > best[0]):
+            best = (as_tuple(m.group(1)), tag)
     return best[1] if best else None
 
 
@@ -285,13 +304,7 @@ def gather(name, pkg_dir, pkg_xml, old):
     found = commits(start, pkg_dir)
     if not found and not tag and start and start == born:
         found, since = commits(None, pkg_dir), "from the package's whole history"
-
-    entries = []
-    for subject, body in found:
-        c = classify(subject, body)
-        if c:
-            entries.append((c[0], c[1], subject, c[2]))
-    entries.sort(key=lambda e: e[0])
+    entries = classified(found)
 
     headers = []
     if start and (pkg_dir / "include").is_dir():
@@ -312,6 +325,17 @@ def gather(name, pkg_dir, pkg_xml, old):
         "text": text,
         "changelog": changelog,
     }
+
+
+def classified(found):
+    """(rank, kind, subject, breaking) for each kept commit, ordered for the changelog."""
+    entries = []
+    for subject, body in found:
+        c = classify(subject, body)
+        if c:
+            entries.append((c[0], c[1], subject, c[2]))
+    entries.sort(key=lambda e: e[0])
+    return entries
 
 
 def stray_message(changelog, stray):
@@ -500,6 +524,53 @@ def release_repo(bump, summary_path, version_out_path):
     return 0
 
 
+def release_changelog(bump_override, summary_path, version_out_path):
+    if Path("package.xml").exists():
+        print(
+            "this repository is a ROS package: release it with --package",
+            file=sys.stderr,
+        )
+        return 1
+    tag = last_repo_tag()
+    old = tag[1:] if tag else "0.0.0"
+    since = f"since tag `{tag}`" if tag else "from the repository's whole history"
+    entries = classified(commits(tag, Path(".")))
+
+    changelog = Path("CHANGELOG.rst")
+    text = changelog.read_text() if changelog.exists() else CHANGELOG_HEADER
+    pending, stray, text = split_pending(text)
+    if stray:
+        print(stray_message(changelog, stray), file=sys.stderr)
+        return 1
+    bullets = bullets_for({"entries": entries, "pending": pending})
+    if not bullets:
+        print(
+            f"nothing to release: no commit {since} survives filtering, and no note is staged "
+            f'under "{PENDING}"',
+            file=sys.stderr,
+        )
+        return 1
+
+    derived = derive_bump(entries)
+    chosen = bump_override or derived
+    new = bumped(old, chosen)
+    if git("tag", "--list", f"v{new}").strip():
+        print(f"tag v{new} already exists", file=sys.stderr)
+        return 1
+
+    today = datetime.date.today().isoformat()
+    changelog.write_text(with_section(text, f"{new} ({today})", bullets))
+
+    body = summary_one(Path.cwd().name, old, new, derived, chosen, since, entries, [])
+    if summary_path:
+        Path(summary_path).write_text(body)
+    if version_out_path:
+        Path(version_out_path).write_text(new + "\n")
+    print(body, end="")
+    print(f"\nwrote {changelog}")
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     mode = ap.add_mutually_exclusive_group(required=True)
@@ -507,10 +578,15 @@ def main():
     mode.add_argument(
         "--repo", action="store_true", help="release every package together, at one shared version"
     )
+    mode.add_argument(
+        "--changelog",
+        action="store_true",
+        help="release a repository that is not a ROS package, versioned by its v<version> tags",
+    )
     ap.add_argument(
         "--bump",
         choices=BUMPS,
-        help="the bump: overrides the derived one for --package, required for --repo",
+        help="the bump: overrides the derived one for --package and --changelog, required for --repo",
     )
     ap.add_argument("--path", default=".", help="the repository root")
     ap.add_argument("--summary", help="write a Markdown summary for the pull request here")
@@ -527,6 +603,8 @@ def main():
 
     if args.package:
         return release_package(args.package, args.bump, args.summary, args.version_out)
+    if args.changelog:
+        return release_changelog(args.bump, args.summary, args.version_out)
     return release_repo(args.bump, args.summary, args.version_out)
 
 

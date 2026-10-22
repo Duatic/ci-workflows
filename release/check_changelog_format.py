@@ -86,7 +86,10 @@ def check(path):
     problems = []
     text = open(path, encoding="utf-8").read()
 
-    if not os.path.exists(os.path.join(os.path.dirname(path), "package.xml")):
+    # A CHANGELOG.rst at the root with no package.xml beside it releases the repository, not a .deb.
+    if path != "CHANGELOG.rst" and not os.path.exists(
+        os.path.join(os.path.dirname(path), "package.xml")
+    ):
         problems.append(
             "no package.xml beside it: bloom looks for the changelog next to the manifest"
         )

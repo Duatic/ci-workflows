@@ -347,6 +347,74 @@ git add -A && git commit -qm "release: 2.1.3"
              || { printf '  FAIL  %-56s\n' "check_release_pr.py accepts it"; fail=$((fail+1)); sed 's/^/          /' "$OUT"; }
 git checkout -q main
 
+echo "=== a repository that is not a ROS package releases from its v tags and a root CHANGELOG.rst ==="
+REPO="$WORK/rootpkg"; mkdir "$REPO"; cd "$REPO"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg . 1.0.0 && git add -A && git commit -qm "feat: a package at the root"
+check 1 "--changelog refuses a repository that is a ROS package" --changelog
+REPO="$WORK/plain"; mkdir "$REPO"; cd "$REPO"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+pkg tests/fixture 0.1.0
+touch_commit . "feat: first feature"
+touch_commit . "chore: tidy"
+check 0 "no tag yet: the whole history, from 0.0.0" --changelog --version-out out_version.txt
+line "a feature makes the first release 0.1.0" 1 "0.1.0" out_version.txt
+line "the changelog is created with its title" 2 "Changelog" CHANGELOG.rst
+expect "with one section for it" 1 "^0\.1\.0 (" CHANGELOG.rst
+expect "holding the feature" 1 "^\* feat: first feature" CHANGELOG.rst
+expect "and not the chore" 0 "chore: tidy" CHANGELOG.rst
+rm out_version.txt
+git add -A && git commit -qm "release: 0.1.0" && git tag v0.1.0
+
+touch_commit . "fix: a bug"
+prepend CHANGELOG.rst "Upcoming changes\n----------------\n* A note by hand\n\n"
+check 0 "a fix since v0.1.0 is a patch" --changelog
+expect "the new section is 0.1.1" 1 "^0\.1\.1 (" CHANGELOG.rst
+expect "the hand-written note is kept" 1 "^\* A note by hand" CHANGELOG.rst
+expect "and its heading removed" 0 "^Upcoming changes" CHANGELOG.rst
+expect "the earlier section stays" 1 "^0\.1\.0 (" CHANGELOG.rst
+
+pr_check() {  # pr_check <want-exit> <label> <title>: check_release_pr.py on main..HEAD
+    local want="$1" label="$2" got
+    ( cd "$REPO" && python3 "$HERE/check_release_pr.py" --base main --head HEAD --title "$3" ) >"$OUT" 2>&1
+    got=$?
+    if [ "$got" = "$want" ]; then printf '  PASS  %-56s exit %s\n' "$label" "$got"; pass=$((pass+1))
+    else printf '  FAIL  %-56s exit %s want %s\n' "$label" "$got" "$want"; fail=$((fail+1))
+         sed 's/^/          /' "$OUT"; fi
+}
+
+git checkout -qb release/0.1.1
+git add -A && git commit -qm "release: 0.1.1"
+( cd "$REPO" && python3 "$HERE/check_changelog_format.py" --base main --head HEAD ) >"$OUT" 2>&1
+[ $? -eq 0 ] && { printf '  PASS  %-56s\n' "check_changelog_format.py accepts the root changelog"; pass=$((pass+1)); } \
+             || { printf '  FAIL  %-56s\n' "check_changelog_format.py accepts the root changelog"; fail=$((fail+1)); sed 's/^/          /' "$OUT"; }
+pr_check 0 "a release adding its section" "release: 0.1.1"
+pr_check 1 "the same section without a release title" "fix: a bug"
+pr_check 1 "a release title naming another version" "release: 0.2.0"
+git checkout -q main
+
+git checkout -qb no-section
+touch_commit . "docs: a readme"
+pr_check 1 "a release title with no new section" "release: 0.1.1"
+pr_check 0 "ordinary work" "docs: a readme"
+git checkout -q main
+
+git checkout -qb fixture
+pkg tests/fixture 0.2.0
+git add -A && git commit -qm "test: bump a fixture"
+pr_check 0 "a deeper package.xml is not released" "test: bump a fixture"
+git checkout -q main
+
+git checkout -qb backwards
+prepend CHANGELOG.rst "0.0.9 (2026-01-01)\n------------------\n* old\n\n"
+git add -A && git commit -qm "release: 0.0.9"
+pr_check 1 "a section that is not after the last tag" "release: 0.0.9"
+git checkout -q main
+
+git tag v0.1.1
+touch_commit . "ci: a workflow"
+check 1 "nothing but dropped commits since the tag" --changelog
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]

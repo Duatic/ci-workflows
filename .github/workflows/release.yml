@@ -1,23 +1,12 @@
 name: Release
-# Manually cut a new semver release for this repo: computes the next version
-# from the latest tag, creates the immutable vX.Y.Z tag, force-moves the
-# floating major tag (vN) to the same commit, and publishes a GitHub Release
-# with auto-generated notes. Dispatch from the branch you want to release
-# (normally main).
+# Cuts a semver release of the calling repository without a pull request or a changelog: computes
+# the next version from the latest tag, creates the immutable vX.Y.Z tag, force-moves the floating
+# major tag (vN) to the same commit, and publishes a GitHub Release with auto-generated notes.
+#
+# Superseded by reusable_prepare_changelog_release.yml and reusable_changelog_release_tag.yml,
+# which this repository releases itself with (self-release.yml).
 
 on:
-  workflow_dispatch:
-    inputs:
-      bump:
-        description: 'Which part of the version to increment'
-        type: choice
-        options: [patch, minor, major]
-        default: patch
-      runner:
-        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
-        default: 'ubuntu-latest'
-        type: string
-  # Callable from other repositories, which then release themselves through this one file.
   workflow_call:
     inputs:
       bump:

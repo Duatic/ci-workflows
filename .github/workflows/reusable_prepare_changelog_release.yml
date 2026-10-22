@@ -1,0 +1,130 @@
+name: prepare changelog release
+# Central, org-wide reusable workflow. Opens the pull request that releases a repository that is
+# not itself a ROS package. Its version is its highest v<version> tag; the commits since then become the next
+# version's section in CHANGELOG.rst at the root, created on the first release, and the bump is
+# derived from them unless bump overrides it.
+#
+# Opened with a personal access token: one opened with GITHUB_TOKEN starts no workflows, so it
+# would carry no checks.
+#
+# Called by a repository from a workflow_dispatch:
+#
+#   jobs:
+#     prepare:
+#       uses: Duatic/ci-workflows/.github/workflows/reusable_prepare_changelog_release.yml@v1
+#       with:
+#         bump: ${{ inputs.bump }}
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      bump:
+        description: 'major, minor or patch to override the bump derived from the commits; derived or empty keeps it.'
+        default: 'derived'
+        required: false
+        type: string
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+    secrets:
+      RELEASE_PAT:
+        description: 'Token with repo scope. The pull request it opens triggers workflows; one opened with GITHUB_TOKEN does not.'
+        required: true
+
+jobs:
+  prepare:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      # The generator reads history and tags; the push below reuses this token.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          token: ${{ secrets.RELEASE_PAT }}
+
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the scripts with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install the changelog parser
+        run: python -m pip install --quiet catkin_pkg
+
+      - name: Write the changelog section
+        id: prepare
+        env:
+          BUMP: ${{ inputs.bump }}
+        run: |
+          args=(--changelog --summary "$RUNNER_TEMP/body.md" --version-out "$RUNNER_TEMP/version")
+          [ -z "$BUMP" ] || [ "$BUMP" = derived ] || args+=(--bump "$BUMP")
+          python3 .checks/release/prepare_release.py "${args[@]}"
+          echo "version=$(cat "$RUNNER_TEMP/version")" >> "$GITHUB_OUTPUT"
+
+      - name: Commit on a release branch
+        id: branch
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          branch="release/${VERSION}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "::error::branch ${branch} already exists; close or delete its pull request first"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git switch -c "$branch"
+          git add -- CHANGELOG.rst
+          git commit -m "release: ${VERSION}"
+          echo "name=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: The checks a release pull request gets
+        env:
+          VERSION: ${{ steps.prepare.outputs.version }}
+          BASE: ${{ github.ref_name }}
+        run: |
+          python3 .checks/release/check_release_pr.py \
+            --base "origin/$BASE" --head HEAD --title "release: ${VERSION}"
+          python3 .checks/release/check_changelog_format.py --base "origin/$BASE" --head HEAD
+
+      # Preinstalled on GitHub-hosted runners; a self-hosted runner may not have it.
+      - name: Ensure the GitHub CLI is available
+        run: |
+          command -v gh >/dev/null && exit 0
+          case "$(uname -m)" in
+            x86_64) arch=amd64 ;;
+            aarch64) arch=arm64 ;;
+            *) echo "::error::unsupported architecture for gh: $(uname -m)"; exit 1 ;;
+          esac
+          version=2.62.0
+          curl -fsSL "https://github.com/cli/cli/releases/download/v${version}/gh_${version}_linux_${arch}.tar.gz" \
+            | tar xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gh_${version}_linux_${arch}/bin" >> "$GITHUB_PATH"
+
+      - name: Push and open a draft pull request
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          BRANCH: ${{ steps.branch.outputs.name }}
+          BASE: ${{ github.ref_name }}
+          VERSION: ${{ steps.prepare.outputs.version }}
+        run: |
+          git push origin "$BRANCH"
+          gh pr create --draft --base "$BASE" --head "$BRANCH" \
+            --title "release: ${VERSION}" --body-file "$RUNNER_TEMP/body.md"
