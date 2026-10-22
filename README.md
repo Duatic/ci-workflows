@@ -388,7 +388,8 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 
 | Secret | Workflow | Required | Description |
 |---|---|---|---|
-| `RELEASE_PAT` | prepare, prepare-repo | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
+| `RELEASE_APP_ID`, `RELEASE_APP_PRIVATE_KEY` | prepare, prepare-repo, prepare-changelog | one of these or `RELEASE_PAT` | The release GitHub App, which opens the pull request. It needs Contents and Pull requests read and write on the repository. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
+| `RELEASE_PAT` | prepare, prepare-repo, prepare-changelog | when the App's are not given | A token with `repo` scope, used in place of the App. |
 
 ## Changelog releases
 
@@ -448,7 +449,7 @@ jobs:
 | `move_major_tag` | tag | no | `true` | Move `v<major>` to the release, for callers pinning the major version. |
 | `runner` | prepare, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
-The prepare workflow needs `RELEASE_PAT`, as above.
+The prepare workflow needs the release App's credentials or `RELEASE_PAT`, as above.
 
 `release.yml`, which tags straight from a dispatch with auto-generated notes and no changelog,
 remains callable for repositories not yet moved to these.
@@ -462,4 +463,4 @@ remains callable for repositories not yet moved to these.
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
-- Repos releasing packages through `reusable_prepare_release.yml` must have a `RELEASE_PAT` secret available (repo or org level) and pass `secrets: inherit`.
+- Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY`, or a `RELEASE_PAT`, available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.

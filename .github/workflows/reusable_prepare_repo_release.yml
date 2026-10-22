@@ -3,8 +3,8 @@ name: prepare repo release
 # repository together, at one shared version: a person picks the bump, and a package with nothing
 # to report gets an honest "No changes." note instead of being skipped.
 #
-# Opened with a personal access token: one opened with GITHUB_TOKEN starts no workflows, so it
-# would carry no checks.
+# Opened by the release GitHub App, or with RELEASE_PAT where the App's credentials are not
+# given: one opened with GITHUB_TOKEN starts no workflows, so it would carry no checks.
 #
 # Called by a product repository from a workflow_dispatch:
 #
@@ -28,20 +28,50 @@ on:
         required: false
         type: string
     secrets:
+      RELEASE_APP_ID:
+        description: 'The release GitHub App. With RELEASE_APP_PRIVATE_KEY, the pull request is opened by the App.'
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        description: 'Private key of the release GitHub App.'
+        required: false
       RELEASE_PAT:
-        description: 'Token with repo scope. The pull request it opens triggers workflows; one opened with GITHUB_TOKEN does not.'
-        required: true
+        description: 'Token with repo scope, used when the App credentials are not given. The pull request it opens triggers workflows; one opened with GITHUB_TOKEN does not.'
+        required: false
 
 jobs:
   prepare:
     runs-on: ${{ inputs.runner }}
     steps:
+      # The release App when its credentials reach this workflow, RELEASE_PAT otherwise.
+      - name: Choose the release token
+        id: app
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -n "$APP_ID" ]; then
+            echo "app=true" >> "$GITHUB_OUTPUT"
+          elif [ -z "$PAT" ]; then
+            echo "::error::neither RELEASE_APP_ID nor RELEASE_PAT reaches this workflow; pass secrets: inherit"
+            exit 1
+          fi
+
+      - uses: actions/create-github-app-token@v2
+        if: steps.app.outputs.app == 'true'
+        id: token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       # The generator reads history and tags; the push below reuses this token.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ steps.token.outputs.token || secrets.RELEASE_PAT }}
 
       # checkout above takes the calling repository. job.workflow_ref names this file's own
       # repository and revision, so a caller pinning the workflow pins the scripts with it.
@@ -118,7 +148,7 @@ jobs:
 
       - name: Push and open a draft pull request
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ steps.token.outputs.token || secrets.RELEASE_PAT }}
           BRANCH: ${{ steps.branch.outputs.name }}
           BASE: ${{ github.ref_name }}
           VERSION: ${{ steps.prepare.outputs.version }}
