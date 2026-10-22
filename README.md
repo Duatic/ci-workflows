@@ -266,7 +266,12 @@ merge-committed; after a rebase merge there is nothing for it to find. It then b
 of every released package that declares `<duatic_archive_root>`, with `reusable_release_build.yml`,
 for each distro in `ros_distros` (default jazzy, kilted, lyrical and rolling) on amd64 and
 arm64. A distro or architecture that does not build is a warning on the run and uploads nothing; a
-released package without a root is not built, also with a warning. Its `released` output lists
+released package without a root is not built, also with a warning. What built is then handed, with a
+`repository_dispatch`, to the private publisher repository the organization variable
+`RELEASE_PUBLISHER` names (or the `publisher` input), which publishes it into the apt archive from a
+self-hosted runner: self-hosted runners never take jobs from public repositories. The tag job passes
+`secrets: inherit` so that `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` reach the dispatch; without
+them, or with no publisher named, the run warns that nothing was published. Its `released` output lists
 `{package, version, tag, root}` for what it tagged, `[]` otherwise.
 
 **`reusable_repo_release_tag.yml`** runs when a repo-wide release pull request merges. Every
