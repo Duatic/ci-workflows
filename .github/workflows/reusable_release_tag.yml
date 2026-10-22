@@ -1,8 +1,11 @@
 name: release tag
 # Central, org-wide reusable workflow. When a release pull request merges, tags each package it
 # released as <package>/<version> at the merge commit and publishes a GitHub Release per tag with
-# that version's changelog section as its notes. A package tag never moves. The released output
-# lists what it tagged, so a caller can build those packages next.
+# that version's changelog section as its notes. A package tag never moves.
+#
+# It then builds the .debs of every released package that declares <duatic_archive_root>, for each
+# distro in ros_distros on amd64 and arm64. A distro or architecture that does not build is a
+# warning and uploads nothing; a released package without a root is not built, also a warning.
 #
 # The calling job must grant contents: write; a called workflow cannot raise the token above what
 # its caller holds. Requires a squash- or merge-committed pull request: a rebase merge's first
@@ -28,9 +31,14 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
+      ros_distros:
+        description: 'JSON list of the ROS distros to build the released packages for'
+        default: '["humble", "jazzy", "kilted", "lyrical", "rolling"]'
+        required: false
+        type: string
     outputs:
       released:
-        description: 'JSON list of {package, version, tag} it tagged; [] when the pull request released nothing'
+        description: 'JSON list of {package, version, tag, root} it tagged; [] when the pull request released nothing'
         value: ${{ jobs.tag.outputs.released }}
 
 permissions:
@@ -41,6 +49,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     outputs:
       released: ${{ steps.tag.outputs.released || '[]' }}
+      build: ${{ steps.tag.outputs.build || '[]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -121,8 +130,38 @@ jobs:
               || gh release create "$tag" --title "${name} ${version}" --notes-file "$RUNNER_TEMP/notes.md"
             echo "released ${tag}"
           done < "$RUNNER_TEMP/released"
-          python3 - "$RUNNER_TEMP/released" >> "$GITHUB_OUTPUT" <<'PY'
-          import json, sys
-          rows = [line.split() for line in open(sys.argv[1]) if line.strip()]
-          print("released=" + json.dumps([{"package": n, "version": v, "tag": f"{n}/{v}"} for n, v, *_ in rows]))
+          python3 - "$RUNNER_TEMP/released" <<'PY'
+          import json, os, sys
+          import xml.etree.ElementTree as ET
+          released = []
+          for name, version, pkg_dir in (line.split() for line in open(sys.argv[1]) if line.strip()):
+              export = ET.parse(os.path.join(pkg_dir, "package.xml")).getroot().find("export")
+              root = (export.findtext("duatic_archive_root") or "").strip() if export is not None else ""
+              released.append({"package": name, "version": version, "tag": f"{name}/{version}", "root": root})
+              if not root:
+                  print(f"::warning::{name} {version} was released but not built: it declares no "
+                        "<duatic_archive_root>, so it cannot reach the apt archive")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("released=" + json.dumps(released) + "\n")
+              out.write("build=" + json.dumps([r for r in released if r["root"]]) + "\n")
           PY
+
+  # The tolerance lives in the build workflow: a job calling a reusable workflow cannot itself be
+  # allowed to fail.
+  build:
+    needs: tag
+    if: needs.tag.outputs.build != '[]'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.tag.outputs.build) }}
+        ros_distro: ${{ fromJSON(inputs.ros_distros) }}
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v1
+    with:
+      tag: ${{ matrix.release.tag }}
+      package: ${{ matrix.release.package }}
+      ros_distro: ${{ matrix.ros_distro }}
+      runner: ${{ inputs.runner }}
+      continue_on_failure: true
