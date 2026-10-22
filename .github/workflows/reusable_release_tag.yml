@@ -33,7 +33,7 @@ on:
         type: string
       ros_distros:
         description: 'JSON list of the ROS distros to build the released packages for'
-        default: '["humble", "jazzy", "kilted", "lyrical", "rolling"]'
+        default: '["jazzy", "kilted", "lyrical", "rolling"]'
         required: false
         type: string
     outputs:
