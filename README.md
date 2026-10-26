@@ -264,7 +264,7 @@ a whole repo release reads as one thing rather than as many simultaneous per-pac
 tags never move. The calling job grants `contents: write`, and the pull request is squash- or
 merge-committed; after a rebase merge there is nothing for it to find. It then builds the `.deb`s
 of every released package that declares `<duatic_archive_root>`, with `reusable_release_build.yml`,
-for each distro in `ros_distros` (default humble, jazzy, kilted, lyrical and rolling) on amd64 and
+for each distro in `ros_distros` (default jazzy, kilted, lyrical and rolling) on amd64 and
 arm64. A distro or architecture that does not build is a warning on the run and uploads nothing; a
 released package without a root is not built, also with a warning. Its `released` output lists
 `{package, version, tag, root}` for what it tagged, `[]` otherwise.
