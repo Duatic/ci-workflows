@@ -37,6 +37,10 @@ on:
         description: 'JSON list of the architectures to build, e.g. ["amd64"]'
         default: '["amd64", "arm64"]'
         type: string
+      continue_on_failure:
+        description: 'Report a failed build as a warning and upload nothing, rather than failing the run.'
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       repository:
@@ -67,6 +71,11 @@ on:
         default: '["amd64", "arm64"]'
         required: false
         type: string
+      continue_on_failure:
+        description: 'Report a failed build as a warning and upload nothing, rather than failing the run.'
+        default: false
+        required: false
+        type: boolean
     outputs:
       artifact:
         description: 'Artifact name without its architecture: one artifact per architecture built, <artifact>-<arch>'
@@ -97,6 +106,7 @@ jobs:
 
       - name: Build the package into a .deb
         id: build
+        continue-on-error: ${{ inputs.continue_on_failure }}
         env:
           PACKAGE: ${{ inputs.package }}
           TAG: ${{ inputs.tag }}
@@ -120,7 +130,20 @@ jobs:
       # Debug symbols are a .ddeb, which a *.deb glob misses. build_pkg.sh collects them and the
       # archive indexes them, so leaving them here is where they would be lost. A package declaring
       # <duatic_publish_source> also has a source tarball, which the archive refuses to do without.
+      - name: Report the failed build
+        if: steps.build.outcome == 'failure'
+        env:
+          PACKAGE: ${{ inputs.package }}
+          TAG: ${{ inputs.tag }}
+          ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          msg="${PACKAGE} at ${TAG} did not build for ${ROS_DISTRO_TARGET} on ${ARCH}; nothing was uploaded"
+          echo "::warning::${msg}"
+          echo "- ${msg}" >> "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@v4
+        if: steps.build.outcome == 'success'
         with:
           name: ${{ steps.build.outputs.artifact }}-${{ matrix.arch }}
           path: |
