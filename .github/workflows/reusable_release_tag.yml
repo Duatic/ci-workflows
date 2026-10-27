@@ -181,7 +181,8 @@ jobs:
     if: ${{ !cancelled() && needs.tag.outputs.build != '[]' }}
     runs-on: ${{ inputs.runner }}
     # Reads this run's artifacts with the App: the caller grants contents: write only.
-    permissions: {}
+    permissions:
+      contents: read
     steps:
       - name: Resolve this workflow's own revision
         id: self
