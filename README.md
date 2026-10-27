@@ -314,10 +314,12 @@ symbols and, when the package declares `<duatic_publish_source>`, its source tar
 It takes a tag to check out and the package to build inside it, and a `version_suffix` appended to
 the `package.xml` version for a build of main. The package is named explicitly, whether the tag is
 a `<package>/<version>` tag, a repo-wide `v<version>` tag or a commit, so the build does not need to
-guess it from the tag's shape. It is not wired into any repository yet: a
-package's dependencies on other packages in the org resolve only from the builder's local
-repository, so a build stops at the first such dependency. Signing and publishing belong to the
-archive host.
+guess it from the tag's shape. A dependency on a package already published resolves from the
+archive the organization variable `ARCHIVE_URL` names, read from the channels in
+`archive_channels`: `stable` for a release, `edge stable` for a build of main, so a dependency
+without a build of main comes from its release. The archive's key is fetched from it and used only
+when its fingerprint is `ARCHIVE_KEY_FINGERPRINT`. Without `ARCHIVE_URL` the build resolves no
+such dependency and fails at the first one. Signing and publishing belong to the archive host.
 
 **`reusable_release_publish.yml`** takes one of those artifacts and publishes it into a signed archive root,
 by delivering it to the publish host and calling `duatic_devtools`' archive tooling there. The
@@ -418,6 +420,7 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro` | build | no | `jazzy` | Distro to build for. The Ubuntu base is not an input; it's derived from this instead. |
 | `version_suffix` | build | no | | Appended to the `package.xml` version, starting with `+` or `~`. The build fails if the `.deb` does not carry it. |
+| `archive_channels` | build | no | `stable` | Archive channels the build's dependencies are read from, e.g. `edge stable`. |
 | `channel` | publish | no | `stable` | Archive channel to publish into: `stable` or `edge`. |
 | `runner` | prepare, prepare-repo, tag, repo-tag, build | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 

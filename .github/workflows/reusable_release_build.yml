@@ -46,6 +46,10 @@ on:
         description: 'Appended to the version in package.xml, e.g. "+git20261027153012.ab12cd3" for a build of main'
         default: ''
         type: string
+      archive_channels:
+        description: 'Archive channels whose packages the build depends on, e.g. "edge stable" for a build of main'
+        default: 'stable'
+        type: string
   workflow_call:
     inputs:
       repository:
@@ -86,6 +90,11 @@ on:
         default: ''
         required: false
         type: string
+      archive_channels:
+        description: 'Archive channels whose packages the build depends on, e.g. "edge stable" for a build of main'
+        default: 'stable'
+        required: false
+        type: string
     outputs:
       artifact:
         description: 'Artifact name without its architecture: one artifact per architecture built, <artifact>-<arch>'
@@ -114,6 +123,22 @@ jobs:
           ref: v1
           path: .devtools
 
+      # Dependencies on packages already published resolve from the archive the ARCHIVE_URL
+      # organization variable names, trusted by its key's fingerprint.
+      - name: Fetch the archive key
+        if: vars.ARCHIVE_URL != ''
+        env:
+          ARCHIVE_URL: ${{ vars.ARCHIVE_URL }}
+          FPR: ${{ vars.ARCHIVE_KEY_FINGERPRINT }}
+        run: |
+          [ -n "$FPR" ] || { echo "::error::ARCHIVE_URL is set without ARCHIVE_KEY_FINGERPRINT"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/keys"
+          key="$RUNNER_TEMP/keys/duatic-archive.gpg"
+          curl -fsSL "${ARCHIVE_URL%/}/duatic-archive.gpg" -o "$key"
+          fprs="$(gpg --show-keys --with-colons "$key" | awk -F: '/^pub/{p=1; next} p && /^fpr/{print $10; p=0}')"
+          [ "$fprs" = "$FPR" ] \
+            || { echo "::error::the archive key is ${fprs:-unreadable}, not $FPR" | tr "\n" " "; exit 1; }
+
       - name: Build the package into a .deb
         id: build
         continue-on-error: ${{ inputs.continue_on_failure }}
@@ -123,12 +148,20 @@ jobs:
           ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
           ARCH: ${{ matrix.arch }}
           SUFFIX: ${{ inputs.version_suffix }}
+          ARCHIVE_URL: ${{ vars.ARCHIVE_URL }}
+          ARCHIVE_CHANNELS: ${{ inputs.archive_channels }}
         run: |
           mkdir -p "$RUNNER_TEMP/out"
+          archive=()
+          if [ -n "$ARCHIVE_URL" ]; then
+            archive=(-e ARCHIVE_URL="$ARCHIVE_URL" -e ARCHIVE_CHANNELS="$ARCHIVE_CHANNELS"
+              -e ARCHIVE_KEYRING=/keys/duatic-archive.gpg -v "$RUNNER_TEMP/keys:/keys:ro")
+          fi
           docker run --rm -i --platform "linux/$ARCH" \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e ROS_DISTRO="$ROS_DISTRO_TARGET" \
             -e DEB_VERSION_SUFFIX="$SUFFIX" \
+            "${archive[@]}" \
             -v "$PWD/src:/src" \
             -v "$PWD/.devtools/packaging/builder:/builder" \
             -v "$RUNNER_TEMP/out:/out" \
