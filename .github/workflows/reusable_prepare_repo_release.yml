@@ -3,8 +3,8 @@ name: prepare repo release
 # repository together, at one shared version: a person picks the bump, and a package with nothing
 # to report gets an honest "No changes." note instead of being skipped.
 #
-# Opened by the release GitHub App, or with RELEASE_PAT where the App's credentials are not
-# given: one opened with GITHUB_TOKEN starts no workflows, so it would carry no checks.
+# Opened by the release GitHub App: one opened with GITHUB_TOKEN starts no workflows, so it would
+# carry no checks. RELEASE_PAT is deprecated and used only where the App's credentials are not given.
 #
 # Called by a product repository from a workflow_dispatch:
 #
@@ -35,14 +35,14 @@ on:
         description: 'Private key of the release GitHub App.'
         required: false
       RELEASE_PAT:
-        description: 'Token with repo scope, used when the App credentials are not given. The pull request it opens triggers workflows; one opened with GITHUB_TOKEN does not.'
+        description: 'Deprecated, use the release App. Token with repo scope, used when the App credentials are not given.'
         required: false
 
 jobs:
   prepare:
     runs-on: ${{ inputs.runner }}
     steps:
-      # The release App when its credentials reach this workflow, RELEASE_PAT otherwise.
+      # The release App when its credentials reach this workflow, the deprecated RELEASE_PAT otherwise.
       - name: Choose the release token
         id: app
         env:
@@ -51,8 +51,10 @@ jobs:
         run: |
           if [ -n "$APP_ID" ]; then
             echo "app=true" >> "$GITHUB_OUTPUT"
-          elif [ -z "$PAT" ]; then
-            echo "::error::neither RELEASE_APP_ID nor RELEASE_PAT reaches this workflow; pass secrets: inherit"
+          elif [ -n "$PAT" ]; then
+            echo "::warning::RELEASE_PAT is deprecated and will be removed in the next major version; give the repository RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY"
+          else
+            echo "::error::RELEASE_APP_ID does not reach this workflow; pass secrets: inherit"
             exit 1
           fi
 
