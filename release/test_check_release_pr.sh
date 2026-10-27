@@ -139,6 +139,26 @@ check 1 "root package bumped, titled as a feature" "feat: something"
 
 WORK="${WORK%/root_pkg}"  # so the trap removes the outer repository too
 
+echo "=== a repository released by its root changelog may add the history of its tags ==="
+WORK="$WORK/changelog_repo" && mkdir "$WORK" && cd "$WORK"
+git init -q -b main . && git config user.email t@duatic.invalid && git config user.name t
+echo readme > README.md && git add -A && git commit -qm baseline
+git tag v1.0.0 && git tag v1.1.0
+section() { printf '%s\n%s\n* something\n\n' "$1" "$(printf '%*s' ${#1} '' | tr ' ' '-')"; }
+history() { printf '^^^^^^^^^\nChangelog\n^^^^^^^^^\n\n'; for v in "$@"; do section "$v (2026-01-01)"; done; }
+git checkout -qb h1
+history 1.1.0 1.0.0 > CHANGELOG.rst && git add -A && git commit -qm "docs(changelog): add the earlier releases"
+check 0 "sections for tagged versions, titled as docs" "docs(changelog): add the earlier releases"
+git checkout -q main && git checkout -qb h2
+history 1.2.0 1.1.0 1.0.0 > CHANGELOG.rst && git add -A && git commit -qm "release: 1.2.0"
+check 0 "the earlier releases and a new one, titled as a release" "release: 1.2.0"
+check 1 "the same, titled as docs" "docs(changelog): add the earlier releases"
+git checkout -q main && git checkout -qb h3
+history 1.0.1 1.0.0 > CHANGELOG.rst && git add -A && git commit -qm "release: 1.0.1"
+check 1 "a section for an untagged version behind the tags" "release: 1.0.1"
+
+WORK="${WORK%/changelog_repo}"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
