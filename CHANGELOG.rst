@@ -4,6 +4,7 @@ Changelog
 
 1.17.0 (2026-10-27)
 -------------------
+* feat(release): build against packages already published in the archive (#41)
 * feat(release): publish builds of main into the edge channel (#36)
 * feat(release): hand what the release built to a publisher repository (#34)
 * feat(release): open release pull requests with the release GitHub App (#35)
