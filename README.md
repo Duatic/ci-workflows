@@ -389,7 +389,6 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | Secret | Workflow | Required | Description |
 |---|---|---|---|
 | `RELEASE_APP_ID`, `RELEASE_APP_PRIVATE_KEY` | prepare, prepare-repo, prepare-changelog | yes | The release GitHub App, which opens the pull request. It needs Contents and Pull requests read and write on the repository. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
-| `RELEASE_PAT` | prepare, prepare-repo, prepare-changelog | no | Deprecated, removed in the next major version. A token with `repo` scope, used in place of the App when its credentials are not given. |
 
 ## Changelog releases
 

@@ -5,7 +5,7 @@ name: prepare changelog release
 # derived from them unless bump overrides it.
 #
 # Opened by the release GitHub App: one opened with GITHUB_TOKEN starts no workflows, so it would
-# carry no checks. RELEASE_PAT is deprecated and used only where the App's credentials are not given.
+# carry no checks.
 #
 # Called by a repository from a workflow_dispatch:
 #
@@ -31,37 +31,23 @@ on:
         type: string
     secrets:
       RELEASE_APP_ID:
-        description: 'The release GitHub App. With RELEASE_APP_PRIVATE_KEY, the pull request is opened by the App.'
+        description: 'The release GitHub App, which opens the pull request.'
         required: false
       RELEASE_APP_PRIVATE_KEY:
         description: 'Private key of the release GitHub App.'
-        required: false
-      RELEASE_PAT:
-        description: 'Deprecated, use the release App. Token with repo scope, used when the App credentials are not given.'
         required: false
 
 jobs:
   prepare:
     runs-on: ${{ inputs.runner }}
     steps:
-      # The release App when its credentials reach this workflow, the deprecated RELEASE_PAT otherwise.
-      - name: Choose the release token
-        id: app
+      - name: Check the release App's credentials reach this workflow
         env:
           APP_ID: ${{ secrets.RELEASE_APP_ID }}
-          PAT: ${{ secrets.RELEASE_PAT }}
         run: |
-          if [ -n "$APP_ID" ]; then
-            echo "app=true" >> "$GITHUB_OUTPUT"
-          elif [ -n "$PAT" ]; then
-            echo "::warning::RELEASE_PAT is deprecated and will be removed in the next major version; give the repository RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY"
-          else
-            echo "::error::RELEASE_APP_ID does not reach this workflow; pass secrets: inherit"
-            exit 1
-          fi
+          [ -n "$APP_ID" ] || { echo "::error::RELEASE_APP_ID does not reach this workflow; pass secrets: inherit"; exit 1; }
 
       - uses: actions/create-github-app-token@v2
-        if: steps.app.outputs.app == 'true'
         id: token
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
@@ -75,7 +61,7 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ steps.token.outputs.token || secrets.RELEASE_PAT }}
+          token: ${{ steps.token.outputs.token }}
 
       # checkout above takes the calling repository. job.workflow_ref names this file's own
       # repository and revision, so a caller pinning the workflow pins the scripts with it.
@@ -152,7 +138,7 @@ jobs:
 
       - name: Push and open a draft pull request
         env:
-          GH_TOKEN: ${{ steps.token.outputs.token || secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
           BRANCH: ${{ steps.branch.outputs.name }}
           BASE: ${{ github.ref_name }}
           VERSION: ${{ steps.prepare.outputs.version }}
