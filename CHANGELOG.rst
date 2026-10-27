@@ -2,6 +2,15 @@
 Changelog
 ^^^^^^^^^
 
+1.17.0 (2026-10-27)
+-------------------
+* feat(release): publish builds of main into the edge channel (#36)
+* feat(release): hand what the release built to a publisher repository (#34)
+* feat(release): open release pull requests with the release GitHub App (#35)
+* feat(release): build released packages for every distro after tagging them (#32)
+* feat(release): changelog releases for repositories without ROS packages (#30)
+* fix(release): take a changelog section for a tagged version as history (#38)
+
 1.16.1 (2026-10-22)
 -------------------
 * fix(release): name what an override downgrades in the release summary (#31)
