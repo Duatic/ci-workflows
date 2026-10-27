@@ -23,6 +23,11 @@ on:
         default: 'jazzy'
         required: false
         type: string
+      channel:
+        description: 'Archive channel to publish into: stable for releases, edge for builds of main'
+        default: 'stable'
+        required: false
+        type: string
       runner:
         description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
@@ -40,16 +45,10 @@ on:
       EXPECTED_KEY_FPR:
         required: true
 
-# aptly's database is single-writer and the routing lists and dist tree are shared, so two
-# releases publishing at once corrupt each other rather than queueing.
-concurrency:
-  group: publish-${{ inputs.root }}
-  cancel-in-progress: false
-
 jobs:
   publish:
     runs-on: ${{ inputs.runner }}
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -64,6 +63,7 @@ jobs:
           ARTIFACT: ${{ inputs.artifact }}
           ROOT: ${{ inputs.root }}
           DISTRO: ${{ inputs.distro }}
+          CHANNEL: ${{ inputs.channel }}
         run: |
           count="$(find deb -name '*.deb' | wc -l)"
           # One package per call. build_pkg.sh collects every .deb the build produced, and
@@ -77,7 +77,7 @@ jobs:
           version="${rest%%_*}"
           # These are interpolated into a command run on the host that holds the signing key, so
           # anything outside this set is refused rather than escaped.
-          for field in "$package" "$version" "$ROOT" "$DISTRO"; do
+          for field in "$package" "$version" "$ROOT" "$DISTRO" "$CHANNEL"; do
             printf '%s' "$field" | grep -qE '^[A-Za-z0-9][A-Za-z0-9._/+~-]*$' \
               || { echo "FATAL: refusing unexpected characters in '$field'" >&2; exit 1; }
           done
@@ -86,6 +86,12 @@ jobs:
             echo "package=$package"
             echo "version=$version"
           } >> "$GITHUB_OUTPUT"
+
+      # Self-hosted runner images do not always carry one.
+      - name: Ensure an SSH client is available
+        run: |
+          command -v ssh >/dev/null && command -v sftp >/dev/null && exit 0
+          sudo apt-get update -qq && sudo apt-get install -y -qq openssh-client
 
       - name: Configure SSH to the publish host
         env:
@@ -106,6 +112,7 @@ jobs:
           VERSION: ${{ steps.deb.outputs.version }}
           ROOT: ${{ inputs.root }}
           DISTRO: ${{ inputs.distro }}
+          CHANNEL: ${{ inputs.channel }}
           HOST: ${{ secrets.PUBLISH_HOST }}
           PUBLISH_USER: ${{ secrets.PUBLISH_USER }}
           FPR: ${{ secrets.EXPECTED_KEY_FPR }}
@@ -114,14 +121,23 @@ jobs:
           # Everything the build produced, not just the .deb the version was read from: the
           # debug symbols ship as a .ddeb and the archive indexes them alongside, and an open
           # root publishes a source tarball beside the package that declares one.
-          scp deb/* "$target:~/archive/out/"
+          # Each file lands under a hidden name and is renamed into place, so a publish already
+          # running on the host never takes one half written.
+          batch="$RUNNER_TEMP/sftp-batch"
+          : > "$batch"
+          for f in deb/*; do
+            b="$(basename "$f")"
+            printf 'put "%s" "archive/out/.%s.part"\nrename "archive/out/.%s.part" "archive/out/%s"\n' \
+              "$f" "$b" "$b" "$b" >> "$batch"
+          done
+          sftp -q -b "$batch" "$target"
           # Named explicitly: a non-interactive ssh reads no profile, so nothing the publish
           # host exports in a login shell reaches this command.
           # Expanded here rather than on the host: every value is checked against a
           # conservative character set above, and the host must receive literals.
           # shellcheck disable=SC2029
           ssh "$target" \
-            "EXPECTED_KEY_FPR='$FPR' DISTRO='$DISTRO' \
+            "EXPECTED_KEY_FPR='$FPR' DISTRO='$DISTRO' CHANNEL='$CHANNEL' \
              ~/duatic_devtools/packaging/archive/add_and_publish.sh \
              '${PACKAGE}:${ROOT}:${VERSION}'"
 

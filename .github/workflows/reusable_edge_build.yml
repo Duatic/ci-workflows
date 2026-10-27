@@ -1,0 +1,176 @@
+name: edge build
+# Central, org-wide reusable workflow. On a push to the default branch, builds the .debs of every
+# package that declares <duatic_archive_root>, for each distro in ros_distros on amd64 and arm64,
+# at <version>+git<commit time>.<commit>: after the release it follows and before the next one.
+# A distro or architecture that does not build is a warning and uploads nothing.
+#
+# What built is handed to a private publisher repository, which publishes it into the edge
+# channel. The caller passes secrets: inherit so RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY reach
+# the dispatch.
+#
+# Called by a product repository on a push to its default branch:
+#
+#   on:
+#     push:
+#       branches: [main]
+#   concurrency:
+#     group: edge-${{ github.ref }}
+#     cancel-in-progress: true
+#   jobs:
+#     edge:
+#       uses: Duatic/ci-workflows/.github/workflows/reusable_edge_build.yml@v1
+#       secrets: inherit
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+      publisher:
+        description: 'Repository in this organization that publishes what was built; empty takes the RELEASE_PUBLISHER organization variable'
+        default: ''
+        required: false
+        type: string
+      ros_distros:
+        description: 'JSON list of the ROS distros to build the packages for'
+        default: '["jazzy", "kilted", "lyrical", "rolling"]'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      build: ${{ steps.plan.outputs.build || '[]' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # checkout above takes the calling repository. job.workflow_ref names this file's own
+      # repository and revision, so a caller pinning the workflow pins the scripts with it.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - name: List the packages to build
+        id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          if [ "$EVENT" != push ] || [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
+            echo "::error::edge builds come from a push to $DEFAULT_BRANCH, not a $EVENT to $REF"
+            exit 1
+          fi
+          build="$(python3 .checks/release/edge_packages.py)"
+          [ "$build" != "[]" ] || echo "no package declares <duatic_archive_root>; nothing to build"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+
+  # The tolerance lives in the build workflow: a job calling a reusable workflow cannot itself be
+  # allowed to fail.
+  build:
+    needs: plan
+    if: needs.plan.outputs.build != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        package: ${{ fromJSON(needs.plan.outputs.build) }}
+        ros_distro: ${{ fromJSON(inputs.ros_distros) }}
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v1
+    with:
+      tag: ${{ matrix.package.tag }}
+      package: ${{ matrix.package.package }}
+      ros_distro: ${{ matrix.ros_distro }}
+      version_suffix: ${{ matrix.package.suffix }}
+      runner: ${{ inputs.runner }}
+      continue_on_failure: true
+
+  publish:
+    needs: [plan, build]
+    if: ${{ !cancelled() && needs.plan.outputs.build != '[]' }}
+    runs-on: ${{ inputs.runner }}
+    # Reads this run's artifacts with the App: the caller's token need not grant actions: read.
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - name: Check a publisher and the release App are available
+        id: app
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          PUBLISHER: ${{ inputs.publisher || vars.RELEASE_PUBLISHER }}
+        run: |
+          if [ -z "$PUBLISHER" ]; then
+            echo "::warning::not published: no publisher repository named; set the RELEASE_PUBLISHER organization variable"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$APP_ID" ]; then
+            echo "::warning::not published: RELEASE_APP_ID does not reach this workflow; pass secrets: inherit"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "publisher=$PUBLISHER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/create-github-app-token@v2
+        if: steps.app.outputs.ok == 'true'
+        id: token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ steps.app.outputs.publisher }}
+          permission-contents: write
+
+      - uses: actions/create-github-app-token@v2
+        if: steps.app.outputs.ok == 'true'
+        id: artifacts
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: read
+
+      - name: Hand what built to the publisher
+        if: steps.app.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ steps.artifacts.outputs.token }}
+          DISPATCH_TOKEN: ${{ steps.token.outputs.token }}
+          BUILD: ${{ needs.plan.outputs.build }}
+          DISTROS: ${{ inputs.ros_distros }}
+          CHANNEL: edge
+          PUBLISHER: ${{ github.repository_owner }}/${{ steps.app.outputs.publisher }}
+        run: python3 .checks/release/hand_to_publisher.py

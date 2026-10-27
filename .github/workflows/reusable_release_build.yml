@@ -1,7 +1,8 @@
 name: release build
 # Builds the .deb for one package at a tag with duatic_devtools' builder, for amd64 and arm64 unless
 # architectures says otherwise, and uploads one artifact per architecture. Signing and publishing
-# belong to the archive host, not to a runner.
+# belong to the archive host, not to a runner. A build of main names its commit as the tag and
+# gives version_suffix, which is appended to the version in package.xml.
 #
 # Dispatch it here with a repository, a tag and a package. The Ubuntu base to build against is
 # derived from ros_distro, since each ROS 2 distro has exactly one supported Ubuntu base.
@@ -41,6 +42,10 @@ on:
         description: 'Report a failed build as a warning and upload nothing, rather than failing the run.'
         default: false
         type: boolean
+      version_suffix:
+        description: 'Appended to the version in package.xml, e.g. "+git20261027153012.ab12cd3" for a build of main'
+        default: ''
+        type: string
   workflow_call:
     inputs:
       repository:
@@ -76,6 +81,11 @@ on:
         default: false
         required: false
         type: boolean
+      version_suffix:
+        description: 'Appended to the version in package.xml, e.g. "+git20261027153012.ab12cd3" for a build of main'
+        default: ''
+        required: false
+        type: string
     outputs:
       artifact:
         description: 'Artifact name without its architecture: one artifact per architecture built, <artifact>-<arch>'
@@ -112,11 +122,13 @@ jobs:
           TAG: ${{ inputs.tag }}
           ROS_DISTRO_TARGET: ${{ inputs.ros_distro }}
           ARCH: ${{ matrix.arch }}
+          SUFFIX: ${{ inputs.version_suffix }}
         run: |
           mkdir -p "$RUNNER_TEMP/out"
           docker run --rm -i --platform "linux/$ARCH" \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
             -e ROS_DISTRO="$ROS_DISTRO_TARGET" \
+            -e DEB_VERSION_SUFFIX="$SUFFIX" \
             -v "$PWD/src:/src" \
             -v "$PWD/.devtools/packaging/builder:/builder" \
             -v "$RUNNER_TEMP/out:/out" \
@@ -125,6 +137,16 @@ jobs:
           # Fail unless a .deb of this architecture was produced.
           ls "$RUNNER_TEMP"/out/*_"$ARCH".deb >/dev/null \
             || { echo "::error::no ${ARCH} .deb produced"; ls "$RUNNER_TEMP/out"; exit 1; }
+          # A builder that ignored the suffix would produce the release's version.
+          if [ -n "$SUFFIX" ]; then
+            for deb in "$RUNNER_TEMP"/out/*.deb; do
+              v="$(dpkg-deb -f "$deb" Version)"
+              case "$v" in
+                *"$SUFFIX"-*) ;;
+                *) echo "::error::$(basename "$deb") is version $v, without $SUFFIX"; exit 1 ;;
+              esac
+            done
+          fi
           echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
 
       # Debug symbols are a .ddeb, which a *.deb glob misses. build_pkg.sh collects them and the

@@ -7,6 +7,11 @@ name: release tag
 # distro in ros_distros on amd64 and arm64. A distro or architecture that does not build is a
 # warning and uploads nothing; a released package without a root is not built, also a warning.
 #
+# What built is handed to a private publisher repository, which publishes it into the stable
+# channel from a self-hosted runner: self-hosted runners never take jobs from public repositories.
+# The caller passes secrets: inherit so RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY reach the
+# dispatch.
+#
 # The calling job must grant contents: write; a called workflow cannot raise the token above what
 # its caller holds. Requires a squash- or merge-committed pull request: a rebase merge's first
 # parent is not pre-merge main, so nothing is found to tag.
@@ -29,6 +34,11 @@ on:
       runner:
         description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
+        required: false
+        type: string
+      publisher:
+        description: 'Repository in this organization that publishes what was built; empty takes the RELEASE_PUBLISHER organization variable'
+        default: ''
         required: false
         type: string
       ros_distros:
@@ -165,3 +175,74 @@ jobs:
       ros_distro: ${{ matrix.ros_distro }}
       runner: ${{ inputs.runner }}
       continue_on_failure: true
+
+  publish:
+    needs: [tag, build]
+    if: ${{ !cancelled() && needs.tag.outputs.build != '[]' }}
+    runs-on: ${{ inputs.runner }}
+    # Reads this run's artifacts with the App: the caller grants contents: write only.
+    permissions:
+      contents: read
+    steps:
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - name: Check a publisher and the release App are available
+        id: app
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+          PUBLISHER: ${{ inputs.publisher || vars.RELEASE_PUBLISHER }}
+        run: |
+          if [ -z "$PUBLISHER" ]; then
+            echo "::warning::not published: no publisher repository named; set the RELEASE_PUBLISHER organization variable"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          elif [ -z "$APP_ID" ]; then
+            echo "::warning::not published: RELEASE_APP_ID does not reach this workflow; give the tag job secrets: inherit"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+            echo "publisher=$PUBLISHER" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/create-github-app-token@v2
+        if: steps.app.outputs.ok == 'true'
+        id: token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ steps.app.outputs.publisher }}
+          permission-contents: write
+
+      - uses: actions/create-github-app-token@v2
+        if: steps.app.outputs.ok == 'true'
+        id: artifacts
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: read
+
+      - name: Hand what built to the publisher
+        if: steps.app.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ steps.artifacts.outputs.token }}
+          DISPATCH_TOKEN: ${{ steps.token.outputs.token }}
+          BUILD: ${{ needs.tag.outputs.build }}
+          DISTROS: ${{ inputs.ros_distros }}
+          CHANNEL: stable
+          PUBLISHER: ${{ github.repository_owner }}/${{ steps.app.outputs.publisher }}
+        run: python3 .checks/release/hand_to_publisher.py

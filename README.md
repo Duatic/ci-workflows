@@ -266,7 +266,14 @@ merge-committed; after a rebase merge there is nothing for it to find. It then b
 of every released package that declares `<duatic_archive_root>`, with `reusable_release_build.yml`,
 for each distro in `ros_distros` (default jazzy, kilted, lyrical and rolling) on amd64 and
 arm64. A distro or architecture that does not build is a warning on the run and uploads nothing; a
-released package without a root is not built, also with a warning. Its `released` output lists
+released package without a root is not built, also with a warning. What built is then handed, with a
+`repository_dispatch`, to the private publisher repository the organization variable
+`RELEASE_PUBLISHER` names (or the `publisher` input), which publishes it into the apt archive's
+`stable` channel from a self-hosted runner: self-hosted runners never take jobs from public repositories. The tag job passes
+`secrets: inherit` so that `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` reach the dispatch; without
+them, or with no publisher named, the run warns that nothing was published. The App reads the run's
+artifacts, which needs Actions read on the repository, and dispatches, which needs Contents write
+on the publisher. Its `released` output lists
 `{package, version, tag, root}` for what it tagged, `[]` otherwise.
 
 **`reusable_repo_release_tag.yml`** runs when a repo-wide release pull request merges. Every
@@ -275,14 +282,39 @@ merge commit, and one GitHub Release is published under it with every package's 
 under its own heading. The same version-sharing requirement `check_release_pr.py` already enforces
 on the pull request is checked again here, in case a merge ever bypasses that check.
 
+**`reusable_edge_build.yml`** runs on a push to the default branch. It builds every package that
+declares `<duatic_archive_root>`, like the tag workflow, at `<version>+git<commit time>.<commit>`
+(the committer time in UTC, as `YYYYMMDDHHMMSS`), which sorts after the release it follows and
+before the next one. For a squash- or merge-committed
+main, that is the order commits landed in. What built is handed to the publisher for the archive's `edge` channel, which
+keeps the newest builds of each package. `nightly` is not built: once a day the publisher switches
+it to what `edge` publishes. It takes the same `runner`, `publisher` and `ros_distros` inputs as the
+tag workflow and needs `secrets: inherit` the same way.
+
+```yaml
+# .github/workflows/edge.yml
+name: Edge
+on:
+  push:
+    branches: [main]
+concurrency:
+  group: edge-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  edge:
+    uses: Duatic/ci-workflows/.github/workflows/reusable_edge_build.yml@v1
+    secrets: inherit
+```
+
 **`reusable_release_build.yml`** builds one package into a `.deb` with `duatic_devtools`' builder,
 once for amd64 on `runner` and once for arm64 on `arm64_runner` (default `ubuntu-24.04-arm`), both
 native, or only for the architectures listed in `architectures`, e.g. `'["amd64"]'`. Each
 architecture is uploaded as its own artifact, `<artifact>-<arch>`, holding the `.deb`, its debug
 symbols and, when the package declares `<duatic_publish_source>`, its source tarball.
-It takes a tag to check out and the package to build inside it - either
-a `<package>/<version>` tag or a repo-wide `v<version>` tag names the package explicitly, so the
-build does not need to guess it from the tag's shape. It is not wired into any repository yet: a
+It takes a tag to check out and the package to build inside it, and a `version_suffix` appended to
+the `package.xml` version for a build of main. The package is named explicitly, whether the tag is
+a `<package>/<version>` tag, a repo-wide `v<version>` tag or a commit, so the build does not need to
+guess it from the tag's shape. It is not wired into any repository yet: a
 package's dependencies on other packages in the org resolve only from the builder's local
 repository, so a build stops at the first such dependency. Signing and publishing belong to the
 archive host.
@@ -290,7 +322,8 @@ archive host.
 **`reusable_release_publish.yml`** takes one of those artifacts and publishes it into a signed archive root,
 by delivering it to the publish host and calling `duatic_devtools`' archive tooling there. The
 signing key is never on the runner. It is `workflow_call` only and reads the artifact from the same
-run, so it is called after the build job, once per architecture, rather than dispatched on its own. The package name and
+run, so it is called after the build job, once per architecture, rather than dispatched on its own.
+`channel` names the archive channel, `stable` by default. The package name and
 version are read from the `.deb` filename rather than taken as inputs, and both are refused unless
 they match a conservative character set, because they reach a command run on the host that holds the
 key. Needs `PUBLISH_HOST`, `PUBLISH_USER`, `PUBLISH_SSH_KEY`, `PUBLISH_HOST_KEY` and
@@ -384,11 +417,13 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | `package` | build | yes | | The package to build, by its `package.xml` name. |
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro` | build | no | `jazzy` | Distro to build for. The Ubuntu base is not an input; it's derived from this instead. |
+| `version_suffix` | build | no | | Appended to the `package.xml` version, starting with `+` or `~`. The build fails if the `.deb` does not carry it. |
+| `channel` | publish | no | `stable` | Archive channel to publish into: `stable` or `edge`. |
 | `runner` | prepare, prepare-repo, tag, repo-tag, build | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
 | Secret | Workflow | Required | Description |
 |---|---|---|---|
-| `RELEASE_PAT` | prepare, prepare-repo | yes | Token with `repo` scope. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
+| `RELEASE_APP_ID`, `RELEASE_APP_PRIVATE_KEY` | prepare, prepare-repo, prepare-changelog | yes | The release GitHub App, which opens the pull request. It needs Contents and Pull requests read and write on the repository. A pull request opened with `GITHUB_TOKEN` starts no workflows, so it would carry no checks. Pass via `secrets: inherit`. |
 
 ## Changelog releases
 
@@ -449,7 +484,7 @@ jobs:
 | `move_major_tag` | tag | no | `true` | Move `v<major>` to the release, for callers pinning the major version. |
 | `runner` | prepare, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
-The prepare workflow needs `RELEASE_PAT`, as above.
+The prepare workflow needs the release App's credentials, as above.
 
 `release.yml`, which tags straight from a dispatch with auto-generated notes and no changelog,
 remains callable for repositories not yet moved to these.
@@ -463,4 +498,4 @@ remains callable for repositories not yet moved to these.
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
-- Repos releasing packages through `reusable_prepare_release.yml` must have a `RELEASE_PAT` secret available (repo or org level) and pass `secrets: inherit`.
+- Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.

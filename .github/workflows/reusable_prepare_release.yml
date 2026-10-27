@@ -3,8 +3,8 @@ name: prepare release
 # changelog section and version bump come from the commits since the package's last tag, and a
 # person reviews them before anything is tagged.
 #
-# Opened with a personal access token: one opened with GITHUB_TOKEN starts no workflows, so it
-# would carry no checks.
+# Opened by the release GitHub App: one opened with GITHUB_TOKEN starts no workflows, so it would
+# carry no checks.
 #
 # Called by a product repository from a workflow_dispatch:
 #
@@ -34,20 +34,38 @@ on:
         required: false
         type: string
     secrets:
-      RELEASE_PAT:
-        description: 'Token with repo scope. The pull request it opens triggers workflows; one opened with GITHUB_TOKEN does not.'
-        required: true
+      RELEASE_APP_ID:
+        description: 'The release GitHub App, which opens the pull request.'
+        required: false
+      RELEASE_APP_PRIVATE_KEY:
+        description: 'Private key of the release GitHub App.'
+        required: false
 
 jobs:
   prepare:
     runs-on: ${{ inputs.runner }}
     steps:
+      - name: Check the release App's credentials reach this workflow
+        env:
+          APP_ID: ${{ secrets.RELEASE_APP_ID }}
+        run: |
+          [ -n "$APP_ID" ] || { echo "::error::RELEASE_APP_ID does not reach this workflow; pass secrets: inherit"; exit 1; }
+
+      - uses: actions/create-github-app-token@v2
+        id: token
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
       # The generator reads history and tags; the push below reuses this token.
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           fetch-tags: true
-          token: ${{ secrets.RELEASE_PAT }}
+          token: ${{ steps.token.outputs.token }}
 
       # checkout above takes the calling repository. job.workflow_ref names this file's own
       # repository and revision, so a caller pinning the workflow pins the scripts with it.
@@ -136,7 +154,7 @@ jobs:
 
       - name: Push and open a draft pull request
         env:
-          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          GH_TOKEN: ${{ steps.token.outputs.token }}
           BRANCH: ${{ steps.branch.outputs.name }}
           BASE: ${{ github.ref_name }}
           PACKAGE: ${{ inputs.package }}
