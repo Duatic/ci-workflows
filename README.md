@@ -283,7 +283,8 @@ on the pull request is checked again here, in case a merge ever bypasses that ch
 **`reusable_edge_build.yml`** runs on a push to the default branch. It builds every package that
 declares `<duatic_archive_root>`, like the tag workflow, at `<version>+git<commit time>.<commit>`
 (the committer time in UTC, as `YYYYMMDDHHMMSS`), which sorts after the release it follows and
-before the next one. What built is handed to the publisher for the archive's `edge` channel, which
+before the next one. For a squash- or merge-committed
+main, that is the order commits landed in. What built is handed to the publisher for the archive's `edge` channel, which
 keeps the newest builds of each package. `nightly` is not built: once a day the publisher switches
 it to what `edge` publishes. It takes the same `runner`, `publisher` and `ros_distros` inputs as the
 tag workflow and needs `secrets: inherit` the same way.

@@ -90,7 +90,7 @@ jobs:
       # Self-hosted runner images do not always carry one.
       - name: Ensure an SSH client is available
         run: |
-          command -v ssh >/dev/null && command -v scp >/dev/null && exit 0
+          command -v ssh >/dev/null && command -v sftp >/dev/null && exit 0
           sudo apt-get update -qq && sudo apt-get install -y -qq openssh-client
 
       - name: Configure SSH to the publish host
@@ -121,7 +121,16 @@ jobs:
           # Everything the build produced, not just the .deb the version was read from: the
           # debug symbols ship as a .ddeb and the archive indexes them alongside, and an open
           # root publishes a source tarball beside the package that declares one.
-          scp deb/* "$target:~/archive/out/"
+          # Each file lands under a hidden name and is renamed into place, so a publish already
+          # running on the host never takes one half written.
+          batch="$RUNNER_TEMP/sftp-batch"
+          : > "$batch"
+          for f in deb/*; do
+            b="$(basename "$f")"
+            printf 'put "%s" "archive/out/.%s.part"\nrename "archive/out/.%s.part" "archive/out/%s"\n' \
+              "$f" "$b" "$b" "$b" >> "$batch"
+          done
+          sftp -q -b "$batch" "$target"
           # Named explicitly: a non-interactive ssh reads no profile, so nothing the publish
           # host exports in a login shell reaches this command.
           # Expanded here rather than on the host: every value is checked against a
