@@ -271,7 +271,9 @@ released package without a root is not built, also with a warning. What built is
 `RELEASE_PUBLISHER` names (or the `publisher` input), which publishes it into the apt archive from a
 self-hosted runner: self-hosted runners never take jobs from public repositories. The tag job passes
 `secrets: inherit` so that `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` reach the dispatch; without
-them, or with no publisher named, the run warns that nothing was published. Its `released` output lists
+them, or with no publisher named, the run warns that nothing was published. The App reads the run's
+artifacts, which needs Actions read on the repository, and dispatches, which needs Contents write
+on the publisher. Its `released` output lists
 `{package, version, tag, root}` for what it tagged, `[]` otherwise.
 
 **`reusable_repo_release_tag.yml`** runs when a repo-wide release pull request merges. Every

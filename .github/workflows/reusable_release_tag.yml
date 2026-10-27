@@ -179,8 +179,8 @@ jobs:
     needs: [tag, build]
     if: ${{ !cancelled() && needs.tag.outputs.build != '[]' }}
     runs-on: ${{ inputs.runner }}
-    permissions:
-      actions: read
+    # Reads this run's artifacts with the App: the caller grants contents: write only.
+    permissions: {}
     steps:
       - name: Check a publisher and the release App are available
         id: app
@@ -209,10 +209,20 @@ jobs:
           repositories: ${{ steps.app.outputs.publisher }}
           permission-contents: write
 
+      - uses: actions/create-github-app-token@v2
+        if: steps.app.outputs.ok == 'true'
+        id: artifacts
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-actions: read
+
       - name: Hand what built to the publisher
         if: steps.app.outputs.ok == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ steps.artifacts.outputs.token }}
           DISPATCH_TOKEN: ${{ steps.token.outputs.token }}
           BUILD: ${{ needs.tag.outputs.build }}
           DISTROS: ${{ inputs.ros_distros }}
