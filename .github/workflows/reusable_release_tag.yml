@@ -7,9 +7,10 @@ name: release tag
 # distro in ros_distros on amd64 and arm64. A distro or architecture that does not build is a
 # warning and uploads nothing; a released package without a root is not built, also a warning.
 #
-# What built is handed to a private publisher repository, which publishes it from a self-hosted
-# runner: self-hosted runners never take jobs from public repositories. The caller passes
-# secrets: inherit so RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY reach the dispatch.
+# What built is handed to a private publisher repository, which publishes it into the stable
+# channel from a self-hosted runner: self-hosted runners never take jobs from public repositories.
+# The caller passes secrets: inherit so RELEASE_APP_ID and RELEASE_APP_PRIVATE_KEY reach the
+# dispatch.
 #
 # The calling job must grant contents: write; a called workflow cannot raise the token above what
 # its caller holds. Requires a squash- or merge-committed pull request: a rebase merge's first
@@ -180,8 +181,24 @@ jobs:
     if: ${{ !cancelled() && needs.tag.outputs.build != '[]' }}
     runs-on: ${{ inputs.runner }}
     # Reads this run's artifacts with the App: the caller grants contents: write only.
-    permissions: {}
+    permissions:
+      contents: read
     steps:
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
       - name: Check a publisher and the release App are available
         id: app
         env:
@@ -226,41 +243,6 @@ jobs:
           DISPATCH_TOKEN: ${{ steps.token.outputs.token }}
           BUILD: ${{ needs.tag.outputs.build }}
           DISTROS: ${{ inputs.ros_distros }}
+          CHANNEL: stable
           PUBLISHER: ${{ github.repository_owner }}/${{ steps.app.outputs.publisher }}
-        run: |
-          python3 - <<'PY'
-          import json, os, urllib.request
-          api, repo, run = os.environ["GITHUB_API_URL"], os.environ["GITHUB_REPOSITORY"], os.environ["GITHUB_RUN_ID"]
-
-          def call(url, token, body=None):
-              req = urllib.request.Request(url, data=body, headers={
-                  "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
-              with urllib.request.urlopen(req) as r:
-                  return json.loads(r.read() or b"null")
-
-          built, page = set(), 1
-          while True:
-              got = call(f"{api}/repos/{repo}/actions/runs/{run}/artifacts?per_page=100&page={page}",
-                         os.environ["GH_TOKEN"])["artifacts"]
-              built |= {a["name"] for a in got}
-              if len(got) < 100:
-                  break
-              page += 1
-
-          # Named as reusable_release_build.yml names them; a leg that failed uploaded nothing.
-          artifacts = []
-          for release in json.loads(os.environ["BUILD"]):
-              for distro in json.loads(os.environ["DISTROS"]):
-                  for arch in ("amd64", "arm64"):
-                      name = f'{release["package"]}-{release["tag"].replace("/", "-")}-{distro}-{arch}'
-                      if name in built:
-                          artifacts.append({"artifact": name, **release, "distro": distro, "arch": arch})
-          if not artifacts:
-              print("::warning::nothing built, so nothing was handed to the publisher")
-              raise SystemExit(0)
-          payload = {"repository": repo, "run_id": run, "artifacts": artifacts}
-          call(f'{api}/repos/{os.environ["PUBLISHER"]}/dispatches', os.environ["DISPATCH_TOKEN"],
-               json.dumps({"event_type": "publish", "client_payload": payload}).encode())
-          for a in artifacts:
-              print(f'handed {a["artifact"]} to {os.environ["PUBLISHER"]}')
-          PY
+        run: python3 .checks/release/hand_to_publisher.py

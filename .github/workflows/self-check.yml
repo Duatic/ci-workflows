@@ -47,5 +47,7 @@ jobs:
         run: release/test_prepare_release.sh
       - name: Released packages suite
         run: release/test_released_packages.sh
+      - name: Edge packages suite
+        run: release/test_edge_packages.sh
       - name: Upstream expansion suite
         run: upstream/test_expand_repos.sh
