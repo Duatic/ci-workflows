@@ -101,6 +101,7 @@ jobs:
       package: ${{ matrix.package.package }}
       ros_distro: ${{ matrix.ros_distro }}
       version_suffix: ${{ matrix.package.suffix }}
+      archive_channels: edge stable
       runner: ${{ inputs.runner }}
       continue_on_failure: true
 
