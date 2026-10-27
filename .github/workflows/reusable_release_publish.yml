@@ -87,6 +87,12 @@ jobs:
             echo "version=$version"
           } >> "$GITHUB_OUTPUT"
 
+      # Self-hosted runner images do not always carry one.
+      - name: Ensure an SSH client is available
+        run: |
+          command -v ssh >/dev/null && command -v scp >/dev/null && exit 0
+          sudo apt-get update -qq && sudo apt-get install -y -qq openssh-client
+
       - name: Configure SSH to the publish host
         env:
           SSH_KEY: ${{ secrets.PUBLISH_SSH_KEY }}
