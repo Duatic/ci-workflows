@@ -446,7 +446,8 @@ with `release:` is left alone.
 Once that `CHANGELOG.rst` exists, the `release-check` and `title-check` actions check the repository
 on it:
 a new version section needs a `release:` title naming it, must come after the last tag, and a
-`release:` title needs a new section.
+`release:` title needs a new section. A section for a version already tagged is history, which any
+pull request may add.
 
 ```yaml
 # .github/workflows/release.yml

@@ -39,7 +39,8 @@ one moved to another directory is compared against its version at the old path.
 A repository whose root holds CHANGELOG.rst and no package.xml is versioned by that changelog and
 its v<version> tags instead, and any package.xml deeper in it is not released: a release adds one
 version section there, ahead of the base's and of every tag, and a section added in any other pull
-request is a release nobody titled as one.
+request is a release nobody titled as one. A section for a version already tagged is history, not a
+release, so the changelog of earlier releases can be added at any time.
 
 Usage:  check_release_pr.py --base origin/main [--head HEAD] [--title "release: ..."]
 Exit 0 if consistent, 1 if not.
@@ -112,20 +113,25 @@ def changelog_versions(ref, path):
     return {m.group(1) for m in SECTION.finditer(blob)}
 
 
-def latest_repo_tag():
-    """The highest version among the v<version> tags, or None."""
-    versions = [
+def repo_tags():
+    """The versions of the v<version> tags."""
+    return {
         t[1:]
         for t in git("tag", "--list", "v*").split()
         if as_tuple(t[1:]) and len(as_tuple(t[1:])) == 3
-    ]
+    }
+
+
+def latest_repo_tag():
+    """The highest version among the v<version> tags, or None."""
+    versions = repo_tags()
     return max(versions, key=as_tuple) if versions else None
 
 
 def check_changelog_repo(merge_base, head, title, is_release):
     """The release check for a repository released by its root CHANGELOG.rst. Returns the exit code."""
     path = "CHANGELOG.rst"
-    added = changelog_versions(head, path) - changelog_versions(merge_base, path)
+    added = changelog_versions(head, path) - changelog_versions(merge_base, path) - repo_tags()
     problems = []
     new = None
     if len(added) > 1:
