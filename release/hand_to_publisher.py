@@ -43,8 +43,11 @@ import urllib.request
 
 
 def call(url, token, body=None):
-    req = urllib.request.Request(url, data=body, headers={
-        "Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"})
+    req = urllib.request.Request(
+        url,
+        data=body,
+        headers={"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"},
+    )
     with urllib.request.urlopen(req) as r:
         return json.loads(r.read() or b"null")
 
@@ -55,8 +58,10 @@ def main():
 
     built, page = set(), 1
     while True:
-        got = call(f"{api}/repos/{repo}/actions/runs/{run}/artifacts?per_page=100&page={page}",
-                   e["GH_TOKEN"])["artifacts"]
+        got = call(
+            f"{api}/repos/{repo}/actions/runs/{run}/artifacts?per_page=100&page={page}",
+            e["GH_TOKEN"],
+        )["artifacts"]
         built |= {a["name"] for a in got}
         if len(got) < 100:
             break
@@ -69,15 +74,26 @@ def main():
             for arch in ("amd64", "arm64"):
                 name = f'{release["package"]}-{release["tag"].replace("/", "-")}-{distro}-{arch}'
                 if name in built:
-                    artifacts.append({"artifact": name, "package": release["package"],
-                                      "version": release["version"], "tag": release["tag"],
-                                      "root": release["root"], "distro": distro, "arch": arch})
+                    artifacts.append(
+                        {
+                            "artifact": name,
+                            "package": release["package"],
+                            "version": release["version"],
+                            "tag": release["tag"],
+                            "root": release["root"],
+                            "distro": distro,
+                            "arch": arch,
+                        }
+                    )
     if not artifacts:
         print("::warning::nothing built, so nothing was handed to the publisher")
         return 0
     payload = {"repository": repo, "run_id": run, "channel": e["CHANNEL"], "artifacts": artifacts}
-    call(f'{api}/repos/{e["PUBLISHER"]}/dispatches', e["DISPATCH_TOKEN"],
-         json.dumps({"event_type": "publish", "client_payload": payload}).encode())
+    call(
+        f'{api}/repos/{e["PUBLISHER"]}/dispatches',
+        e["DISPATCH_TOKEN"],
+        json.dumps({"event_type": "publish", "client_payload": payload}).encode(),
+    )
     for a in artifacts:
         print(f'handed {a["artifact"]} to {e["PUBLISHER"]} for {e["CHANNEL"]}')
     return 0

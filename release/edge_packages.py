@@ -45,8 +45,9 @@ import xml.etree.ElementTree as ET
 
 
 def git(*args):
-    r = subprocess.run(["git", *args], capture_output=True, text=True,
-                       env={**os.environ, "TZ": "UTC"})
+    r = subprocess.run(
+        ["git", *args], capture_output=True, text=True, env={**os.environ, "TZ": "UTC"}
+    )
     if r.returncode:
         raise SystemExit(f'git {" ".join(args)}: {r.stderr.strip()}')
     return r.stdout
@@ -71,13 +72,22 @@ def main():
             print(f"::warning::{path} is not valid XML; not built", file=sys.stderr)
             continue
         export = root.find("export")
-        archive_root = (export.findtext("duatic_archive_root") or "").strip() if export is not None else ""
+        archive_root = (
+            (export.findtext("duatic_archive_root") or "").strip() if export is not None else ""
+        )
         if not archive_root:
             continue
         name = (root.findtext("name") or "").strip()
         version = (root.findtext("version") or "").strip()
-        packages.append({"package": name, "version": version + suffix, "suffix": suffix,
-                         "tag": commit, "root": archive_root})
+        packages.append(
+            {
+                "package": name,
+                "version": version + suffix,
+                "suffix": suffix,
+                "tag": commit,
+                "root": archive_root,
+            }
+        )
         print(f"{name} {version}{suffix} -> {archive_root}", file=sys.stderr)
     print(json.dumps(sorted(packages, key=lambda p: p["package"])))
     return 0
