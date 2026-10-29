@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+1.18.0 (2026-10-29)
+-------------------
+* feat(title-check): add 'revert' to the list of allowed commit types (#42)
+
 1.17.0 (2026-10-27)
 -------------------
 * feat(release): build against packages already published in the archive (#41)
