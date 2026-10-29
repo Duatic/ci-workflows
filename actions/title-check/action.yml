@@ -24,6 +24,7 @@ runs:
           ci
           test
           refactor
+          revert
           perf
           build
           release
