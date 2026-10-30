@@ -6,7 +6,7 @@ name: CI orchestrator
 #   - the distro matrix and the ROS_REPO channel per distro (rolling -> testing, else main)
 #   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
-#   - a cheap failing check on draft PRs instead of running the full (expensive) matrix
+#   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
 # optionally a single distro to build via workflow_dispatch.
@@ -57,19 +57,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  draft_guard:
-    name: Draft PR - CI skipped
-    if: ${{ github.event_name == 'pull_request' && github.event.pull_request.draft }}
-    runs-on: ${{ inputs.runner }}
-    steps:
-      - name: Fail fast on draft PRs
-        run: |
-          echo "::error::CI does not run on draft PRs to save compute. Mark this PR 'Ready for review' to run the full build."
-          exit 1
-
   prepare:
     name: Plan distro matrix
-    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     runs-on: ${{ inputs.runner }}
     outputs:
       primary: ${{ steps.plan.outputs.primary }}
@@ -115,7 +104,7 @@ jobs:
   secondary:
     name: secondary
     needs: [prepare, primary]
-    if: ${{ needs.prepare.outputs.secondary != '[]' }}
+    if: ${{ needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     strategy:
       fail-fast: false
       matrix:
