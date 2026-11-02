@@ -1,6 +1,6 @@
 name: ROS CI
-# Builds and tests the calling repository for ONE distro on its ci image from the image factory
-# (duatic_docker_image's ci.yml), the same pipeline that builds the nightly product images.
+# Builds and tests the calling repository for ONE distro on its ci image, which the image factory
+# (duatic_docker_image's ci-image.yml) builds with the same pipeline as the nightly product images.
 # Not meant to be called directly by product repos, use ci_orchestrator.yml, which drives this
 # per distro with the matrix/gating logic.
 
@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       runner:
-        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        description: 'Runner label(s) to run the jobs on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
         required: false
         type: string
@@ -27,16 +27,66 @@ on:
         required: false
 
 jobs:
-  test:
+  image:
     permissions:
       contents: read
       packages: write
-    uses: Duatic/duatic_docker_image/.github/workflows/ci.yml@v1
+    uses: Duatic/duatic_docker_image/.github/workflows/ci-image.yml@v1
     with:
       ros_distro: ${{ inputs.ros_distro }}
       runner: ${{ inputs.runner }}
     secrets:
       GH_PAT: ${{ secrets.CI_PAT }}
+
+  test:
+    name: ${{ inputs.ros_distro }}
+    needs: image
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    env:
+      REPO: ${{ github.event.repository.name }}
+      GIT_AUTH_TOKEN: ${{ secrets.CI_PAT || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: src/${{ env.REPO }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache ccache
+        uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.ros_distro }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ inputs.ros_distro }}-${{ github.sha }}
+            ccache-${{ inputs.ros_distro }}-
+
+      - name: Build and test
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          # Mounted where duatic-with-github-auth reads the build secret, for clones the build makes.
+          token="$RUNNER_TEMP/git_auth_token"
+          printf '%s' "$GIT_AUTH_TOKEN" > "$token"
+          mkdir -p .ccache
+          # The image's entrypoint sets up the robot's ROS environment over the prebuilt stack.
+          docker run --rm -v "$token:/run/secrets/GIT_AUTH_TOKEN:ro" \
+            -v "$PWD/.ccache:/ccache" -e CCACHE_DIR=/ccache \
+            -v "$PWD/src/$REPO:/ws/src/$REPO" -w /ws "$IMAGE" bash -c '
+            set -e
+            duatic-with-github-auth colcon build --mixin ccache
+            colcon test
+            colcon test-result --verbose'
 
   badge:
     name: badge

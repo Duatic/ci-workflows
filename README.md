@@ -465,11 +465,11 @@ remains callable for repositories not yet moved to these.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
-- **`reusable_ci.yml`** - builds and tests one distro through the image factory's `ci.yml`, and writes that distro's badge.
+- **`reusable_ci.yml`** - gets one distro's ci image from the image factory's `ci-image.yml`, builds and tests the repo on it, and writes that distro's badge.
 - **`pre-commit.yml`** - runs `pre-commit` across all files.
 
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
-- Repos grant `packages: write` to the CI job, which caches each distro's ci image in ghcr.io. A pull request from a fork builds its image without caching it.
+- Repos grant `packages: write` to the CI job, which caches each distro's ci image in ghcr.io. A pull request from a fork cannot push one, so it only passes while its dependencies match an image a run on the repo itself already built.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.
