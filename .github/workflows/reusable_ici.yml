@@ -112,8 +112,10 @@ jobs:
           # Every requirements.txt file is resolved together so conflicting versions are detected.
           mapfile -t requirements < <(find . \( -name build -o -name install -o -name log -o -name .venv -o -name node_modules \) -prune \
             -o -type f -name requirements.txt -print | LC_ALL=C sort)
+          # Pin numpy to the apt version the ROS C extensions are built against.
+          constrain="python3 -c 'import numpy; print(\"numpy==\" + numpy.__version__)' > /tmp/pip-constraints.txt"
           if [ ${#requirements[@]} -gt 0 ]; then
-            echo "pip_install=python3 -m pip install --break-system-packages --ignore-installed$(printf ' -r %q' "${requirements[@]}")" >> "$GITHUB_OUTPUT"
+            echo "pip_install=${constrain} && python3 -m pip install --break-system-packages --ignore-installed -c /tmp/pip-constraints.txt$(printf ' -r %q' "${requirements[@]}")" >> "$GITHUB_OUTPUT"
           else
             echo "pip_install=" >> "$GITHUB_OUTPUT"
           fi

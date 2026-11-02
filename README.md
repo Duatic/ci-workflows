@@ -64,7 +64,7 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
 - **`upstream_workspace`** - auto-detected: `reusable_ici.yml` uses `repos.list` to collect git repository dependencies recursively.
 - **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) - drop an `Aptfile` at the consumer repo root (one package per line, `#` comments allowed); picked up automatically. Most repos don't need this file at all.
-- **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) - drop a `requirements.txt` file into the package that needs them. All of them are `pip install`ed together (full dependency tree, `--break-system-packages`) after target dependencies are installed, before build/test. Most repos don't need this file at all.
+- **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) - drop a `requirements.txt` file into the package that needs them. All of them are `pip install`ed together (full dependency tree, `--break-system-packages`) after target dependencies are installed, before build/test. numpy is pinned to the apt version the ROS C extensions are built against, so do not pin numpy yourself. Most repos don't need this file at all.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
 
 ## Example: library repo, no private deps
