@@ -116,6 +116,7 @@ jobs:
           repository: ${{ inputs.repository || github.repository }}
           ref: ${{ inputs.tag }}
           path: src
+          lfs: true
 
       - uses: actions/checkout@v4
         with:

@@ -320,6 +320,7 @@ archive the organization variable `ARCHIVE_URL` names, read from the channels in
 without a build of main comes from its release. The archive's key is fetched from it and used only
 when its fingerprint is `ARCHIVE_KEY_FINGERPRINT`. Without `ARCHIVE_URL` the build resolves no
 such dependency and fails at the first one. Signing and publishing belong to the archive host.
+Files stored in Git LFS are fetched with the checkout.
 
 **`reusable_release_publish.yml`** takes one of those artifacts and publishes it into a signed archive root,
 by delivering it to the publish host and calling `duatic_devtools`' archive tooling there. The
