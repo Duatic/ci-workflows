@@ -2,6 +2,11 @@
 Changelog
 ^^^^^^^^^
 
+1.18.1 (2026-11-02)
+-------------------
+* fix(ici): pin pip numpy to the apt version ROS is built against (#46)
+* fix(release): fetch Git LFS content for the package being built (#45)
+
 1.18.0 (2026-10-29)
 -------------------
 * feat(title-check): add 'revert' to the list of allowed commit types (#42)
