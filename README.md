@@ -7,11 +7,11 @@ Central, versioned GitHub Actions reusable workflows.
 Tags follow semver. Pin consumers to the moving major tag:
 
 ```yaml
-uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
 ```
 
-`v1` always points at the latest compatible `v1.x.y` release. Immutable `v1.0.0`-style tags exist
-for rollback/bisection. Breaking input changes bump the major (`@v2`).
+`v2` always points at the latest compatible `v2.x.y` release. Immutable `v2.0.0`-style tags exist
+for rollback/bisection. Breaking input changes bump the major (`@v3`).
 
 Releases are cut via the **Self-release** workflow (`workflow_dispatch`,
 `.github/workflows/self-release.yml`) from the
@@ -26,9 +26,9 @@ moving major; see [Package releases](#package-releases).
 
 ## What consumers call
 
-For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, the `ROS_REPO`
-channel per distro, gating, concurrency, and the draft-PR policy, and internally drives the two leaf
-workflows (`reusable_ici.yml`, `pre-commit.yml`) that most repos never reference directly.
+For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, gating,
+concurrency, and the draft-PR policy, and internally drives the two leaf workflows
+(`reusable_ci.yml`, `pre-commit.yml`) that most repos never reference directly.
 
 **`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
@@ -52,19 +52,19 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `extra_distros` | no | `''` | Opt-in: comma-separated distros added to the secondary distros of the `all` matrix, e.g. `humble` for repos that still support it. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
-| `badge_gist_id` | no | `''` | Deprecated, removed in the next major release, use `badge_branch`. Opt-in: gist ID to publish per-distro pass/fail status badges to. Empty disables badge publishing entirely. |
 | `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 
 | Secret | Required | Description |
 |---|---|---|
 | `CI_PAT` | no | PAT used to clone private upstream dependencies from a `repos.list` file at the repo root. Pass via `secrets: inherit`; omit entirely for public-only repos. |
-| `GIST_TOKEN` | no | PAT with `gist` scope. Required only if `badge_gist_id` is set. Pass via `secrets: inherit`. |
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
-- **`upstream_workspace`** - auto-detected: `reusable_ici.yml` uses `repos.list` to collect git repository dependencies recursively.
-- **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) - drop an `Aptfile` at the consumer repo root (one package per line, `#` comments allowed); picked up automatically. Most repos don't need this file at all.
-- **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) - drop a `requirements.txt` file into the package that needs them. All of them are `pip install`ed together (full dependency tree, `--break-system-packages`) after target dependencies are installed, before build/test. numpy is pinned to the apt version the ROS C extensions are built against, so do not pin numpy yourself. Most repos don't need this file at all.
+- **Dependencies** - each distro builds and tests on the repo's ci image from the
+  [image factory](https://github.com/Duatic/duatic_docker_image), the same pipeline as the nightly
+  product images. It holds the git repositories `repos.list` collects recursively, compiled, and
+  every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare. The image is
+  reused until one of those, an upstream repository's head, or the base image changes.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
 
 ## Example: library repo, no private deps
@@ -91,7 +91,10 @@ on:
 
 jobs:
   ci:
-    uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+    permissions:
+      contents: read
+      packages: write
+    uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
     with:
       ros_distro: ${{ inputs.ros_distro }}
     secrets: inherit
@@ -104,49 +107,15 @@ Same file, plus `runner: self-hosted`. The `repos.list` file at the repo root an
 ```yaml
 jobs:
   ci:
-    uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+    permissions:
+      contents: read
+      packages: write
+    uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
     with:
       ros_distro: ${{ inputs.ros_distro }}
       runner: self-hosted
     secrets: inherit
 ```
-
-## Status badges for private repos (opt-in, gist-backed, deprecated)
-
-> **Deprecated:** gist-backed badges will be removed in the next major release. Use the
-> [`badges` branch](#status-badges-opt-in-badges-branch) instead. Runs that set `badge_gist_id`
-> emit a deprecation warning.
-
-GitHub's native workflow `badge.svg` reports at the workflow-**file** level, so it can't show
-one badge per distro, and it won't render for anonymous viewers of a **private** repo's README.
-To get per-distro badges that work regardless of repo visibility, the orchestrator can publish
-each distro's pass/fail to a gist, which [shields.io's `endpoint`
-renderer](https://shields.io/badges/endpoint-badge) then turns into a badge:
-
-1. Create a public gist (any placeholder file) and a PAT with only the `gist` scope.
-2. Add the PAT as a repo (or org) secret named `GIST_TOKEN`.
-3. Pass `badge_gist_id` and `secrets: inherit` in your `ci.yml`:
-   ```yaml
-   jobs:
-     ci:
-       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
-       with:
-         ros_distro: ${{ inputs.ros_distro }}
-         badge_gist_id: <your-gist-id>
-       secrets: inherit
-   ```
-4. Point README badges at the gist file, namespaced `<repo-name>-<distro>.json`:
-   ```markdown
-   [![Jazzy](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/<user>/<gist-id>/raw/<repo-name>-jazzy.json)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
-   ```
-
-Badges are only written for runs on the default branch. Each distro leg renders its own badge JSON and uploads it as an artifact; a `badges` job in the orchestrator downloads every leg's artifact and does a single multi-file gist PATCH per run.
-
-**Use a separate gist per repo**, even though the filename is namespaced (`<repo-name>-<distro>.json`)
-and would technically allow sharing one gist across repos. With ~20 repos on the same nightly
-cron, concurrent writers hitting the *same* gist trip GitHub's secondary (abuse) rate limit even
-after coalescing each repo down to one write. The abuse limit is sensitive to concurrent writes against
-one resource, not just total call volume.
 
 ## Status badges (opt-in, `badges` branch)
 
@@ -159,7 +128,8 @@ using the job's `GITHUB_TOKEN`. No PAT or gist is needed, and badges of private 
      ci:
        permissions:
          contents: write
-       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+         packages: write
+       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
        with:
          ros_distro: ${{ inputs.ros_distro }}
          badge_branch: true
@@ -172,7 +142,7 @@ using the job's `GITHUB_TOKEN`. No PAT or gist is needed, and badges of private 
 
 Badges are only written for runs on the default branch. A run that builds a single distro updates only that
 distro's badge. The build and pre-commit jobs run with `contents: read`; only the badges job uses
-the write permission.
+the `contents` write permission.
 
 ## Claude code review
 
@@ -495,11 +465,11 @@ remains callable for repositories not yet moved to these.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
-- **`reusable_ici.yml`** - the upstream `ros-industrial` industrial_ci template, builds one distro/channel combination. Auto-detects `repos.list`, `Aptfile`, and `requirements.txt`.
+- **`reusable_ci.yml`** - builds and tests one distro through the image factory's `ci.yml`, and writes that distro's badge.
 - **`pre-commit.yml`** - runs `pre-commit` across all files.
 
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
-- Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
+- Repos grant `packages: write` to the CI job, which caches each distro's ci image in ghcr.io. A pull request from a fork builds its image without caching it.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.

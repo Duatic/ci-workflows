@@ -1,0 +1,69 @@
+name: ROS CI
+# Builds and tests the calling repository for ONE distro on its ci image from the image factory
+# (duatic_docker_image's ci.yml), the same pipeline that builds the nightly product images.
+# Not meant to be called directly by product repos, use ci_orchestrator.yml, which drives this
+# per distro with the matrix/gating logic.
+
+on:
+  workflow_call:
+    inputs:
+      ros_distro:
+        description: 'ROS distro to build and test'
+        required: true
+        type: string
+      runner:
+        description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+      badge_branch:
+        description: 'Write a pass/fail status badge artifact for the orchestrator to publish to the badges branch. Only written for runs on the default branch.'
+        default: false
+        required: false
+        type: boolean
+    secrets:
+      CI_PAT:
+        description: 'Optional PAT used to clone private repositories listed in the repos.list workspace file.'
+        required: false
+
+jobs:
+  test:
+    permissions:
+      contents: read
+      packages: write
+    uses: Duatic/duatic_docker_image/.github/workflows/ci.yml@v1
+    with:
+      ros_distro: ${{ inputs.ros_distro }}
+      runner: ${{ inputs.runner }}
+    secrets:
+      GH_PAT: ${{ secrets.CI_PAT }}
+
+  badge:
+    name: badge
+    needs: test
+    if: ${{ always() && inputs.badge_branch && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Write badge artifact
+        env:
+          RESULT: ${{ needs.test.result }}
+          REPO: ${{ github.event.repository.name }}
+          DISTRO: ${{ inputs.ros_distro }}
+        run: |
+          set -euo pipefail
+          mkdir -p badge
+          status="failing"
+          color="red"
+          case "$RESULT" in
+            success)   status="passing";   color="brightgreen";;
+            cancelled) status="cancelled"; color="lightgrey";;
+          esac
+          printf '{"schemaVersion":1,"label":"%s","message":"%s","color":"%s"}\n' \
+            "$DISTRO" "$status" "$color" > "badge/${REPO}-${DISTRO}.json"
+
+      - name: Upload badge artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-${{ inputs.ros_distro }}
+          path: badge/*.json
+          retention-days: 1

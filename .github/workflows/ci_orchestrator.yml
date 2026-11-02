@@ -1,9 +1,9 @@
 name: CI orchestrator
 # Consumer-facing entry point for ROS 2 package CI across the Duatic org.
-# Consumers: uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
 #
 # Owns everything that shouldn't be re-decided per repo:
-#   - the distro matrix and the ROS_REPO channel per distro (rolling -> testing, else main)
+#   - the distro matrix, each distro built and tested on the image factory's ci image
 #   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
@@ -29,11 +29,6 @@ on:
         default: 'ubuntu-latest'
         required: false
         type: string
-      badge_gist_id:
-        description: 'Deprecated, removed in the next major release, use badge_branch. Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
-        default: ''
-        required: false
-        type: string
       badge_branch:
         description: 'Publish per-distro pass/fail status badges as SVGs to the "badges" branch of the calling repository. Requires the caller to grant "contents: write". Only written for runs on the default branch.'
         default: false
@@ -47,9 +42,6 @@ on:
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
-        required: false
-      GIST_TOKEN:
-        description: 'Deprecated, removed with badge_gist_id in the next major release. PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 concurrency:
@@ -69,8 +61,7 @@ jobs:
           SEL_DISTRO: ${{ inputs.ros_distro }}
           EXTRA_DISTROS: ${{ inputs.extra_distros }}
         run: |
-          channel() { case "$1" in rolling) echo testing;; *) echo main;; esac; }
-          entry() { printf '{"ros_distro":"%s","ros_repo":"%s"}' "$1" "$(channel "$1")"; }
+          entry() { printf '"%s"' "$1"; }
           if [ -z "$SEL_DISTRO" ] || [ "$SEL_DISTRO" = "all" ]; then
             primary="[$(entry jazzy)]"
             extra=""
@@ -89,15 +80,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.primary) }}
+        ros_distro: ${{ fromJSON(needs.prepare.outputs.primary) }}
     permissions:
       contents: read
-    uses: ./.github/workflows/reusable_ici.yml
+      packages: write
+    uses: ./.github/workflows/reusable_ci.yml
     with:
       ros_distro: ${{ matrix.ros_distro }}
-      ros_repo: ${{ matrix.ros_repo }}
       runner: ${{ inputs.runner }}
-      badge_gist_id: ${{ inputs.badge_gist_id }}
       badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
@@ -108,15 +98,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.secondary) }}
+        ros_distro: ${{ fromJSON(needs.prepare.outputs.secondary) }}
     permissions:
       contents: read
-    uses: ./.github/workflows/reusable_ici.yml
+      packages: write
+    uses: ./.github/workflows/reusable_ci.yml
     with:
       ros_distro: ${{ matrix.ros_distro }}
-      ros_repo: ${{ matrix.ros_repo }}
       runner: ${{ inputs.runner }}
-      badge_gist_id: ${{ inputs.badge_gist_id }}
       badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
@@ -130,11 +119,11 @@ jobs:
       runner: ${{ inputs.runner }}
       devtools_ref: ${{ inputs.devtools_ref }}
 
-  # Coalesces every leg's badge artifact into a single gist patch and/or badges branch commit.
+  # Coalesces every leg's badge artifact into a single badges branch commit.
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
-    if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && inputs.badge_branch && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
@@ -153,7 +142,7 @@ jobs:
           set -euo pipefail
           mkdir -p badges
           distros=$(jq -r -n --argjson p "$PRIMARY" --argjson s "$SECONDARY" \
-            '($p + $s)[].ros_distro')
+            '($p + $s)[]')
           for d in $distros; do
             f="badges/${REPO}-${d}.json"
             if [ ! -f "$f" ]; then
@@ -162,32 +151,7 @@ jobs:
             fi
           done
 
-      - name: Publish badges to gist
-        if: ${{ inputs.badge_gist_id != '' }}
-        env:
-          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          GIST_ID: ${{ inputs.badge_gist_id }}
-        run: |
-          set -euo pipefail
-          echo "::warning title=badge_gist_id is deprecated::Gist badges will be removed in the next major release. Switch to badge_branch: true."
-          shopt -s nullglob
-          files=(badges/*.json)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No badge artifacts found, nothing to publish."
-            exit 0
-          fi
-          payload=$(jq -n '{files:{}}')
-          for f in "${files[@]}"; do
-            payload=$(jq --arg n "$(basename "$f")" --rawfile c "$f" '.files[$n]={content:$c}' <<<"$payload")
-          done
-          curl -sSf -X PATCH \
-            -H "Authorization: Bearer ${GIST_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/gists/${GIST_ID}" \
-            -d "$payload" > /dev/null
-
       - name: Publish badges to branch
-        if: ${{ inputs.badge_branch }}
         env:
           TOKEN: ${{ github.token }}
         run: |
