@@ -61,7 +61,7 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
 - **Dependencies** - each distro builds and tests on the repo's ci image from the
-  [image factory](https://github.com/Duatic/duatic_docker_image), the same pipeline as the nightly
+  [image factory](https://github.com/Duatic/duatic_ros2_base_images), the same pipeline as the nightly
   product images. It holds the git repositories `repos.list` collects recursively, compiled, and
   every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare, and is built
   on every run.
