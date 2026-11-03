@@ -63,8 +63,8 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 - **Dependencies** - each distro builds and tests on the repo's ci image from the
   [image factory](https://github.com/Duatic/duatic_docker_image), the same pipeline as the nightly
   product images. It holds the git repositories `repos.list` collects recursively, compiled, and
-  every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare. The image is
-  reused until one of those, an upstream repository's head, or the base image changes.
+  every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare, and is built
+  on every run.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
 
 ## Example: library repo, no private deps
@@ -465,11 +465,11 @@ remains callable for repositories not yet moved to these.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
-- **`reusable_ci.yml`** - gets one distro's ci image from the image factory's `ci-image.yml`, builds and tests the repo on it, and writes that distro's badge.
+- **`reusable_ci.yml`** - gets one distro's ci image from the image factory's `build-image.yml`, builds and tests the repo on it, and writes that distro's badge.
 - **`pre-commit.yml`** - runs `pre-commit` across all files.
 
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
-- Repos grant `packages: write` to the CI job, which caches each distro's ci image in ghcr.io. A pull request from a fork cannot push one, so it only passes while its dependencies match an image a run on the repo itself already built.
+- Repos grant `packages: write` to the CI job, which pushes each distro's ci image to ghcr.io for the test job to pull. A pull request from a fork cannot push it, so its CI fails.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.

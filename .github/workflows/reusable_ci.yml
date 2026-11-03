@@ -1,6 +1,6 @@
 name: ROS CI
 # Builds and tests the calling repository for ONE distro on its ci image, which the image factory
-# (duatic_docker_image's ci-image.yml) builds with the same pipeline as the nightly product images.
+# (duatic_docker_image's build-image.yml) builds with the same pipeline as the nightly product images.
 # Not meant to be called directly by product repos, use ci_orchestrator.yml, which drives this
 # per distro with the matrix/gating logic.
 
@@ -31,9 +31,12 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: Duatic/duatic_docker_image/.github/workflows/ci-image.yml@v1
+    uses: Duatic/duatic_docker_image/.github/workflows/build-image.yml@v1
     with:
       ros_distro: ${{ inputs.ros_distro }}
+      target: ci
+      # The test job pulls the image from ghcr.io.
+      publish: true
       runner: ${{ inputs.runner }}
     secrets:
       GH_PAT: ${{ secrets.CI_PAT }}
