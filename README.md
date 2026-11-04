@@ -51,7 +51,9 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 |---|---|---|---|
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `extra_distros` | no | `''` | Opt-in: comma-separated distros added to the secondary distros of the `all` matrix, e.g. `humble` for repos that still support it. |
-| `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
+| `architectures` | no | `'["amd64","arm64"]'` | JSON list of the architectures every distro builds and tests on, each natively on its own runner and ci image. Private repositories without a self-hosted arm64 runner pass `'["amd64"]'`: hosted minutes are billed for them. |
+| `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 legs and every other job, e.g. `self-hosted`. |
+| `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the arm64 legs. |
 | `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 | `paths_ignore` | no | docs and images | Comma-separated shell patterns (`*` also matches `/`). A push or pull request that changes only matching files skips building and testing; the skipped legs pass required checks. The default covers `*.md`, `docs/*`, `LICENSE*`, images and the issue and pull request templates. |
@@ -69,6 +71,7 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
   manifests and the day, and reuses a published image with the same key: within a day, a run
   rebuilds it only when a dependency or an upstream commit changed. The test job fails when the
   image lists unresolved dependencies, the same gate the robot image holds.
+- **Architectures** - each distro builds and tests once per architecture in `architectures`, on that architecture's runner and ci image; its badge passes only when every architecture passed.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
 
 ## Example: library repo, no private deps
