@@ -54,3 +54,5 @@ jobs:
         run: upstream/test_expand_repos.sh
       - name: Tested tree suite
         run: ci/test_tested_tree.sh
+      - name: Version-only change suite
+        run: ci/test_version_only.sh

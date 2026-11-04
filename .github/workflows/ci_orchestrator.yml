@@ -8,6 +8,7 @@ name: CI orchestrator
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #   - a push to the default branch does not build a tree that already passed in the last 24 hours
+#   - a change to nothing but changelogs and package versions does not build
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
 # optionally a single distro to build via workflow_dispatch.
@@ -65,6 +66,7 @@ jobs:
       primary: ${{ steps.plan.outputs.primary }}
       secondary: ${{ steps.plan.outputs.secondary }}
       tested: ${{ steps.tested.outputs.tested }}
+      version_only: ${{ steps.version_only.outputs.version_only }}
     steps:
       - id: plan
         env:
@@ -87,7 +89,7 @@ jobs:
 
       - name: Resolve this workflow's own revision
         id: self
-        if: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
         env:
           WORKFLOW_REF: ${{ job.workflow_ref }}
         run: |
@@ -107,9 +109,34 @@ jobs:
         with:
           python-version: '3.12'
 
+      # A pull request's merge commit has the base as its first parent; a push compares against
+      # what the branch held before, which must be that parent.
+      - name: Check for a change to versions and changelogs only
+        id: version_only
+        if: ${{ steps.self.outcome == 'success' }}
+        env:
+          TOKEN: ${{ github.token }}
+          URL: ${{ github.server_url }}/${{ github.repository }}
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          git init -q "$RUNNER_TEMP/change" && cd "$RUNNER_TEMP/change"
+          git remote add origin "$URL"
+          git config http.extraheader "AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)"
+          git fetch -q --depth=2 --filter=blob:none origin "$GITHUB_SHA"
+          base=$(git rev-parse -q --verify "${GITHUB_SHA}^1" || true)
+          if [ -z "$base" ] || { [ "$EVENT" = push ] && [ "$BEFORE" != "$base" ]; }; then
+            result=false
+          else
+            result=$(python3 "$GITHUB_WORKSPACE/.checks/ci/version_only.py" "$base" "$GITHUB_SHA")
+          fi
+          echo "version_only=${result}" >> "$GITHUB_OUTPUT"
+          if [ "$result" = true ]; then echo "Only changelogs and package versions changed, not building."; fi
+
       - name: Look for a run that already tested this tree
         id: tested
-        if: ${{ steps.self.outcome == 'success' }}
+        if: ${{ steps.self.outcome == 'success' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.version_only.outputs.version_only != 'true' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: echo "tested=$(python3 .checks/ci/tested_tree.py)" >> "$GITHUB_OUTPUT"
@@ -117,7 +144,7 @@ jobs:
   primary:
     name: primary
     needs: prepare
-    if: ${{ needs.prepare.outputs.tested != 'true' }}
+    if: ${{ needs.prepare.outputs.tested != 'true' && needs.prepare.outputs.version_only != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -166,7 +193,7 @@ jobs:
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
-    if: ${{ always() && needs.prepare.outputs.tested != 'true' && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && needs.prepare.outputs.tested != 'true' && needs.prepare.outputs.version_only != 'true' && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
