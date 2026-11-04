@@ -1,7 +1,8 @@
 name: Self-check
 # Runs pre-commit against this repo's own files (workflow YAML, docs), dogfooding the
 # pre-commit.yml leaf workflow that every consumer repo gets via ci_orchestrator.yml, runs the
-# suite for the release checks in release/, and runs the title check on this repo's pull requests.
+# suites for the release checks in release/ and the CI helpers in ci/, and runs the title check on
+# this repo's pull requests.
 
 on:
   pull_request:
@@ -32,7 +33,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Python syntax
-        run: python3 -m py_compile release/*.py upstream/*.py
+        run: python3 -m py_compile release/*.py upstream/*.py ci/*.py
 
       # The prepare suite runs the format check on what it produced, which reads with catkin_pkg;
       # the upstream expansion suite reads repos files with pyyaml.
@@ -51,3 +52,5 @@ jobs:
         run: release/test_edge_packages.sh
       - name: Upstream expansion suite
         run: upstream/test_expand_repos.sh
+      - name: Tested tree suite
+        run: ci/test_tested_tree.sh
