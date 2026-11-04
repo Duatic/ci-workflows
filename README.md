@@ -66,7 +66,7 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 - **Extra `apt` dependencies** (e.g. `libboost-regex-dev`) - drop an `Aptfile` at the consumer repo root (one package per line, `#` comments allowed); picked up automatically. Most repos don't need this file at all.
 - **Extra `pip` dependencies not resolvable via rosdep** (e.g. `open3d`) - drop a `requirements.txt` file into the package that needs them. All of them are `pip install`ed together (full dependency tree, `--break-system-packages`) after target dependencies are installed, before build/test. numpy is pinned to the apt version the ROS C extensions are built against, so do not pin numpy yourself. Most repos don't need this file at all.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
-- **Already tested trees** - a push to the default branch does not build its tree again when a run of the same workflow passed every job on that tree within the last 24 hours, either on the pushed commit or on the head of the pull request it merged. A pull request merged while up to date with the default branch has the same tree as its head. Otherwise, or when the lookup fails, the push builds. Pre-commit still runs. The lookup needs `actions: read` and `pull-requests: read`; a caller that sets `permissions` must grant both.
+- **Already tested trees** - a push or scheduled run on the default branch does not build its tree again when a run of the same workflow passed every job on that tree within the last 24 hours, either on the commit itself or on the head of the pull request it merged. A pull request merged while up to date with the default branch has the same tree as its head. Otherwise, or when the lookup fails, it builds. Pre-commit still runs. The lookup needs `actions: read` and `pull-requests: read`; a caller that sets `permissions` must grant both.
 - **Version-only changes** - a pull request or push to the default branch that changes nothing but existing `CHANGELOG.rst` files and the `<version>` of existing `package.xml` files, as a release pull request does, builds no distro. Pre-commit still runs.
 
 ## Example: library repo, no private deps
@@ -502,7 +502,7 @@ remains callable for repositories not yet moved to these.
 
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
-- Repos whose CI workflow sets `permissions` must grant `actions: read` and `pull-requests: read`, or every push to the default branch builds.
+- Repos whose CI workflow sets `permissions` must grant `actions: read` and `pull-requests: read`, or every push and scheduled run on the default branch builds.
 - Repos opting into gist-backed badges must have a `GIST_TOKEN` secret available (repo or org level) and pass `secrets: inherit`.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.

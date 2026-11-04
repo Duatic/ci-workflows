@@ -7,7 +7,8 @@ name: CI orchestrator
 #   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
-#   - a push to the default branch does not build a tree that already passed in the last 24 hours
+#   - a push or scheduled run on the default branch does not build a tree that already passed in
+#     the last 24 hours
 #   - a change to nothing but changelogs and package versions does not build
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
@@ -89,7 +90,7 @@ jobs:
 
       - name: Resolve this workflow's own revision
         id: self
-        if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' || github.event_name == 'schedule' }}
         env:
           WORKFLOW_REF: ${{ job.workflow_ref }}
         run: |
@@ -113,7 +114,7 @@ jobs:
       # what the branch held before, which must be that parent.
       - name: Check for a change to versions and changelogs only
         id: version_only
-        if: ${{ steps.self.outcome == 'success' }}
+        if: ${{ steps.self.outcome == 'success' && github.event_name != 'schedule' }}
         env:
           TOKEN: ${{ github.token }}
           URL: ${{ github.server_url }}/${{ github.repository }}
@@ -136,7 +137,7 @@ jobs:
 
       - name: Look for a run that already tested this tree
         id: tested
-        if: ${{ steps.self.outcome == 'success' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.version_only.outputs.version_only != 'true' }}
+        if: ${{ steps.self.outcome == 'success' && (github.event_name == 'push' || github.event_name == 'schedule') && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && steps.version_only.outputs.version_only != 'true' }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: echo "tested=$(python3 .checks/ci/tested_tree.py)" >> "$GITHUB_OUTPUT"
