@@ -7,6 +7,7 @@ name: CI orchestrator
 #   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
+#   - a push to the default branch does not build a tree that already passed in the last 24 hours
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
 # optionally a single distro to build via workflow_dispatch.
@@ -63,6 +64,7 @@ jobs:
     outputs:
       primary: ${{ steps.plan.outputs.primary }}
       secondary: ${{ steps.plan.outputs.secondary }}
+      tested: ${{ steps.tested.outputs.tested }}
     steps:
       - id: plan
         env:
@@ -83,9 +85,39 @@ jobs:
           echo "primary=${primary}" >> "$GITHUB_OUTPUT"
           echo "secondary=${secondary}" >> "$GITHUB_OUTPUT"
 
+      - name: Resolve this workflow's own revision
+        id: self
+        if: ${{ github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        if: ${{ steps.self.outcome == 'success' }}
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - uses: actions/setup-python@v5
+        if: ${{ steps.self.outcome == 'success' }}
+        with:
+          python-version: '3.12'
+
+      - name: Look for a run that already tested this tree
+        id: tested
+        if: ${{ steps.self.outcome == 'success' }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: echo "tested=$(python3 .checks/ci/tested_tree.py)" >> "$GITHUB_OUTPUT"
+
   primary:
     name: primary
     needs: prepare
+    if: ${{ needs.prepare.outputs.tested != 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -134,7 +166,7 @@ jobs:
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
-    if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && needs.prepare.outputs.tested != 'true' && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
