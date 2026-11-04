@@ -54,6 +54,7 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the build jobs, e.g. `self-hosted`. |
 | `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
+| `paths_ignore` | no | docs and images | Comma-separated shell patterns (`*` also matches `/`). A push or pull request that changes only matching files skips building and testing; the skipped legs pass required checks. The default covers `*.md`, `docs/*`, `LICENSE*`, images and the issue and pull request templates. |
 
 | Secret | Required | Description |
 |---|---|---|
@@ -63,13 +64,16 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 - **Dependencies** - each distro builds and tests on the repo's ci image from the
   [image factory](https://github.com/Duatic/duatic_ros2_base_images), the same pipeline as the nightly
   product images. It holds the git repositories `repos.list` collects recursively, compiled, and
-  every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare, and is built
-  on every run.
+  every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare. The factory
+  pins every upstream branch to its commit and keys the image on that, the repo's own dependency
+  manifests and the day, and reuses a published image with the same key: within a day, a run
+  rebuilds it only when a dependency or an upstream commit changed. The test job fails when the
+  image lists unresolved dependencies, the same gate the robot image holds.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
 
 ## Example: library repo, no private deps
 
-This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit.
+This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. Keep the cron before the repo's nightly image build (e.g. 00:30 and 01:30): the first CI run of the day builds that day's ci image, which the nightly reuses.
 
 ```yaml
 name: CI
@@ -86,7 +90,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '0 1 * * *'
+    - cron: '30 0 * * *'
       timezone: Europe/Zurich
 
 jobs:
@@ -470,6 +474,6 @@ remains callable for repositories not yet moved to these.
 
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
-- Repos grant `packages: write` to the CI job, which pushes each distro's ci image to ghcr.io for the test job to pull. A pull request from a fork cannot push it, so its CI fails.
+- Repos grant `packages: write` to the CI job, which pushes each distro's ci image to ghcr.io for the test job to pull. A pull request from a fork cannot push it, so its CI fails unless a ci image with the same key is already published.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.

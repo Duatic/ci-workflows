@@ -7,9 +7,13 @@ name: CI orchestrator
 #   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
+#   - a push or pull request that changes only files matching paths_ignore (docs by default)
+#     skips the build and test legs; they report as skipped, which passes required checks
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
-# optionally a single distro to build via workflow_dispatch.
+# optionally a single distro to build via workflow_dispatch. Schedule CI before the nightly
+# image build (e.g. 00:30 and 01:30 Europe/Zurich): the first CI run of the day builds that
+# day's ci image, which the nightly then reuses.
 
 on:
   workflow_call:
@@ -39,6 +43,11 @@ on:
         default: ''
         required: false
         type: string
+      paths_ignore:
+        description: 'Comma-separated shell patterns ("*" also matches "/"). A push or pull request changing only matching files skips building and testing.'
+        default: '*.md,docs/*,LICENSE*,*.png,*.jpg,*.jpeg,*.svg,.github/ISSUE_TEMPLATE/*,.github/pull_request_template.md'
+        required: false
+        type: string
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
@@ -52,10 +61,43 @@ jobs:
   prepare:
     name: Plan distro matrix
     runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
     outputs:
       primary: ${{ steps.plan.outputs.primary }}
       secondary: ${{ steps.plan.outputs.secondary }}
+      build: ${{ steps.changes.outputs.build }}
     steps:
+      # Builds unless the event's changed files are all ignored. Schedules, manual runs, a
+      # first push and a comparison that may be truncated (300 files) always build.
+      - id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          PATHS_IGNORE: ${{ inputs.paths_ignore }}
+        run: |
+          set -uo pipefail
+          build=true
+          if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request)$ && -n "$BASE" && ! "$BASE" =~ ^0+$ ]] &&
+            files=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/compare/${BASE}...${HEAD}" |
+              jq -r 'if (.files | length) < 300 then .files[].filename else error("truncated") end'); then
+            build=false
+            set -f
+            IFS=, read -r -a patterns <<<"$PATHS_IGNORE"
+            while IFS= read -r f; do
+              [[ -z "$f" ]] && continue
+              ignored=false
+              for p in "${patterns[@]}"; do
+                p="${p#"${p%%[![:space:]]*}"}"
+                p="${p%"${p##*[![:space:]]}"}"
+                [[ -n "$p" && "$f" == $p ]] && { ignored=true; break; }
+              done
+              $ignored || { echo "Builds for: $f"; build=true; break; }
+            done <<<"$files"
+          fi
+          echo "build=${build}" | tee -a "$GITHUB_OUTPUT"
       - id: plan
         env:
           SEL_DISTRO: ${{ inputs.ros_distro }}
@@ -77,6 +119,7 @@ jobs:
   primary:
     name: primary
     needs: prepare
+    if: ${{ needs.prepare.outputs.build == 'true' }}
     strategy:
       fail-fast: false
       matrix:
@@ -123,7 +166,7 @@ jobs:
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
-    if: ${{ always() && inputs.badge_branch && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && inputs.badge_branch && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
