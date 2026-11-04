@@ -102,7 +102,10 @@ def main():
     get = api(env.get("GITHUB_API_URL", "https://api.github.com"), env["GITHUB_TOKEN"])
     try:
         run = find_tested_run(
-            get, env["GITHUB_REPOSITORY"], env["GITHUB_RUN_ID"], env["GITHUB_SHA"],
+            get,
+            env["GITHUB_REPOSITORY"],
+            env["GITHUB_RUN_ID"],
+            env["GITHUB_SHA"],
             datetime.now(timezone.utc),
         )
     except OSError as e:
