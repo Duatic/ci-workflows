@@ -43,7 +43,7 @@ jobs:
     permissions:
       contents: read
       packages: write
-    uses: Duatic/duatic_ros2_base_images/.github/workflows/build-image.yml@v1
+    uses: Duatic/duatic_ros2_base_images/.github/workflows/build-image.yml@feat/multi-arch-images
     with:
       ros_distro: ${{ inputs.ros_distro }}
       architectures: ${{ format('["{0}"]', inputs.arch) }}
