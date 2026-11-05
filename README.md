@@ -472,7 +472,7 @@ remains callable for repositories not yet moved to these.
 
 ## Leaf workflows (internal, not called directly by product repos)
 
-- **`reusable_ci.yml`** - gets one distro's ci image from the image factory's `build-image.yml`, builds and tests the repo on it, and writes that distro's badge.
+- **`reusable_ci.yml`** - gets one distro's ci image from the image factory's `reusable_build_image.yml`, builds and tests the repo on it, and writes that distro's badge.
 - **`pre-commit.yml`** - runs `pre-commit` across all files.
 
 ## Requirements on consumer repos
