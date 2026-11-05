@@ -1,15 +1,20 @@
 name: CI orchestrator
 # Consumer-facing entry point for ROS 2 package CI across the Duatic org.
-# Consumers: uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v1
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
 #
 # Owns everything that shouldn't be re-decided per repo:
-#   - the distro matrix and the ROS_REPO channel per distro (rolling -> testing, else main)
+#   - the distro x architecture matrix, each leg built and tested natively on the image
+#     factory's ci image for its architecture (amd64 and arm64 unless `architectures` says less)
 #   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
+#   - a push or pull request that changes only files matching paths_ignore (docs by default)
+#     skips the build and test legs; they report as skipped, which passes required checks
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
-# optionally a single distro to build via workflow_dispatch.
+# optionally a single distro to build via workflow_dispatch. Schedule CI before the nightly
+# image build (e.g. 00:30 and 01:30 Europe/Zurich): the first CI run of the day builds that
+# day's ci image, which the nightly then reuses.
 
 on:
   workflow_call:
@@ -24,14 +29,19 @@ on:
         default: ''
         required: false
         type: string
+      architectures:
+        description: 'JSON list of the architectures to build and test each distro on, of amd64 and arm64.'
+        default: '["amd64","arm64"]'
+        required: false
+        type: string
       runner:
-        description: 'Runner label(s) to run all jobs on, e.g. "ubuntu-latest" or "self-hosted".'
+        description: 'Runner label(s) for the amd64 legs and every other job, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
         required: false
         type: string
-      badge_gist_id:
-        description: 'Deprecated, removed in the next major release, use badge_branch. Optional gist ID to publish per-distro pass/fail status badges to. Empty (default) disables badge publishing. Only written for runs on the default branch.'
-        default: ''
+      runner_arm64:
+        description: 'Runner label(s) for the arm64 legs.'
+        default: 'ubuntu-24.04-arm'
         required: false
         type: string
       badge_branch:
@@ -44,12 +54,14 @@ on:
         default: ''
         required: false
         type: string
+      paths_ignore:
+        description: 'Comma-separated shell patterns ("*" also matches "/"). A push or pull request changing only matching files skips building and testing.'
+        default: '*.md,docs/*,LICENSE*,*.png,*.jpg,*.jpeg,*.svg,.github/ISSUE_TEMPLATE/*,.github/pull_request_template.md'
+        required: false
+        type: string
     secrets:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
-        required: false
-      GIST_TOKEN:
-        description: 'Deprecated, removed with badge_gist_id in the next major release. PAT with "gist" scope, required only when badge_gist_id is set.'
         required: false
 
 concurrency:
@@ -60,17 +72,51 @@ jobs:
   prepare:
     name: Plan distro matrix
     runs-on: ${{ inputs.runner }}
+    permissions:
+      contents: read
     outputs:
       primary: ${{ steps.plan.outputs.primary }}
       secondary: ${{ steps.plan.outputs.secondary }}
+      build: ${{ steps.changes.outputs.build }}
     steps:
+      # Builds unless the event's changed files are all ignored. Schedules, manual runs, a
+      # first push and a comparison that may be truncated (300 files) always build.
+      - id: changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+          PATHS_IGNORE: ${{ inputs.paths_ignore }}
+        run: |
+          set -uo pipefail
+          build=true
+          if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request)$ && -n "$BASE" && ! "$BASE" =~ ^0+$ ]] &&
+            files=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/compare/${BASE}...${HEAD}" |
+              jq -r 'if (.files | length) < 300 then .files[].filename else error("truncated") end'); then
+            build=false
+            set -f
+            IFS=, read -r -a patterns <<<"$PATHS_IGNORE"
+            while IFS= read -r f; do
+              [[ -z "$f" ]] && continue
+              ignored=false
+              for p in "${patterns[@]}"; do
+                p="${p#"${p%%[![:space:]]*}"}"
+                p="${p%"${p##*[![:space:]]}"}"
+                # $p is unquoted on purpose: paths_ignore entries are globs.
+                # shellcheck disable=SC2053
+                [[ -n "$p" && "$f" == $p ]] && { ignored=true; break; }
+              done
+              $ignored || { echo "Builds for: $f"; build=true; break; }
+            done <<<"$files"
+          fi
+          echo "build=${build}" | tee -a "$GITHUB_OUTPUT"
       - id: plan
         env:
           SEL_DISTRO: ${{ inputs.ros_distro }}
           EXTRA_DISTROS: ${{ inputs.extra_distros }}
         run: |
-          channel() { case "$1" in rolling) echo testing;; *) echo main;; esac; }
-          entry() { printf '{"ros_distro":"%s","ros_repo":"%s"}' "$1" "$(channel "$1")"; }
+          entry() { printf '"%s"' "$1"; }
           if [ -z "$SEL_DISTRO" ] || [ "$SEL_DISTRO" = "all" ]; then
             primary="[$(entry jazzy)]"
             extra=""
@@ -86,18 +132,21 @@ jobs:
   primary:
     name: primary
     needs: prepare
+    if: ${{ needs.prepare.outputs.build == 'true' }}
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.primary) }}
+        ros_distro: ${{ fromJSON(needs.prepare.outputs.primary) }}
+        arch: ${{ fromJSON(inputs.architectures) }}
     permissions:
       contents: read
-    uses: ./.github/workflows/reusable_ici.yml
+      packages: write
+    uses: ./.github/workflows/reusable_ci.yml
     with:
       ros_distro: ${{ matrix.ros_distro }}
-      ros_repo: ${{ matrix.ros_repo }}
+      arch: ${{ matrix.arch }}
       runner: ${{ inputs.runner }}
-      badge_gist_id: ${{ inputs.badge_gist_id }}
+      runner_arm64: ${{ inputs.runner_arm64 }}
       badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
@@ -108,15 +157,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(needs.prepare.outputs.secondary) }}
+        ros_distro: ${{ fromJSON(needs.prepare.outputs.secondary) }}
+        arch: ${{ fromJSON(inputs.architectures) }}
     permissions:
       contents: read
-    uses: ./.github/workflows/reusable_ici.yml
+      packages: write
+    uses: ./.github/workflows/reusable_ci.yml
     with:
       ros_distro: ${{ matrix.ros_distro }}
-      ros_repo: ${{ matrix.ros_repo }}
+      arch: ${{ matrix.arch }}
       runner: ${{ inputs.runner }}
-      badge_gist_id: ${{ inputs.badge_gist_id }}
+      runner_arm64: ${{ inputs.runner_arm64 }}
       badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
@@ -130,11 +181,11 @@ jobs:
       runner: ${{ inputs.runner }}
       devtools_ref: ${{ inputs.devtools_ref }}
 
-  # Coalesces every leg's badge artifact into a single gist patch and/or badges branch commit.
+  # Coalesces every leg's badge artifact into a single badges branch commit.
   badges:
     name: Publish status badges
     needs: [prepare, primary, secondary]
-    if: ${{ always() && (inputs.badge_gist_id != '' || inputs.badge_branch) && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && inputs.badge_branch && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
@@ -144,56 +195,37 @@ jobs:
           path: badges
           merge-multiple: true
 
-      - name: Fill missing badges for legs that did not run
+      # One badge per distro over its architectures: failing when any leg failed, otherwise
+      # cancelled or not run when any leg was, otherwise passing.
+      - name: Combine each distro's legs, filling legs that did not run
         env:
           PRIMARY: ${{ needs.prepare.outputs.primary }}
           SECONDARY: ${{ needs.prepare.outputs.secondary }}
+          ARCHITECTURES: ${{ inputs.architectures }}
           REPO: ${{ github.event.repository.name }}
         run: |
           set -euo pipefail
-          mkdir -p badges
-          distros=$(jq -r -n --argjson p "$PRIMARY" --argjson s "$SECONDARY" \
-            '($p + $s)[].ros_distro')
-          for d in $distros; do
-            f="badges/${REPO}-${d}.json"
-            if [ ! -f "$f" ]; then
-              printf '{"schemaVersion":1,"label":"%s","message":"not run","color":"lightgrey"}\n' \
-                "$d" > "$f"
-            fi
-          done
-
-      - name: Publish badges to gist
-        if: ${{ inputs.badge_gist_id != '' }}
-        env:
-          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
-          GIST_ID: ${{ inputs.badge_gist_id }}
-        run: |
-          set -euo pipefail
-          echo "::warning title=badge_gist_id is deprecated::Gist badges will be removed in the next major release. Switch to badge_branch: true."
-          shopt -s nullglob
-          files=(badges/*.json)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No badge artifacts found, nothing to publish."
-            exit 0
-          fi
-          payload=$(jq -n '{files:{}}')
-          for f in "${files[@]}"; do
-            payload=$(jq --arg n "$(basename "$f")" --rawfile c "$f" '.files[$n]={content:$c}' <<<"$payload")
-          done
-          curl -sSf -X PATCH \
-            -H "Authorization: Bearer ${GIST_TOKEN}" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/gists/${GIST_ID}" \
-            -d "$payload" > /dev/null
+          mkdir -p badges distros
+          legs=$(jq -r -n --argjson p "$PRIMARY" --argjson s "$SECONDARY" --argjson a "$ARCHITECTURES" \
+            '($p + $s)[] as $d | $a[] | "\($d) \(.)"')
+          while read -r d a; do
+            f="badges/${REPO}-${d}-${a}.json"
+            [ -f "$f" ] || printf '{"label":"%s","message":"not run","color":"lightgrey"}\n' "$d" > "$f"
+          done <<<"$legs"
+          while read -r d; do
+            jq -s '{schemaVersion: 1, label: .[0].label} + (
+                [.[] | select(.message == "failing")][0] //
+                [.[] | select(.message != "passing")][0] // .[0] | {message, color})' \
+              badges/"${REPO}-${d}"-*.json > "distros/${REPO}-${d}.json"
+          done < <(cut -d' ' -f1 <<<"$legs" | sort -u)
 
       - name: Publish badges to branch
-        if: ${{ inputs.badge_branch }}
         env:
           TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          src="$PWD/badges"
+          src="$PWD/distros"
           mkdir out && cd out
           git init -q -b badges
           git remote add origin "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git"

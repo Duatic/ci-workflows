@@ -1,0 +1,140 @@
+name: ROS CI
+# Builds and tests the calling repository for ONE distro on its ci image, which the image factory
+# (duatic_ros2_base_images' reusable_build_image.yml) builds with the same pipeline as the nightly product
+# images. The factory keys that image on everything it is built from and reuses a published one,
+# so a run whose dependencies and upstream commits did not change today only builds and tests.
+# Not meant to be called directly by product repos, use ci_orchestrator.yml, which drives this
+# per distro with the matrix/gating logic.
+
+on:
+  workflow_call:
+    inputs:
+      ros_distro:
+        description: 'ROS distro to build and test'
+        required: true
+        type: string
+      arch:
+        description: 'Architecture to build and test on: amd64 or arm64.'
+        default: 'amd64'
+        required: false
+        type: string
+      runner:
+        description: 'Runner label(s) for amd64 and the badge job, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+      runner_arm64:
+        description: 'Runner label(s) for arm64.'
+        default: 'ubuntu-24.04-arm'
+        required: false
+        type: string
+      badge_branch:
+        description: 'Write a pass/fail status badge artifact for the orchestrator to publish to the badges branch. Only written for runs on the default branch.'
+        default: false
+        required: false
+        type: boolean
+    secrets:
+      CI_PAT:
+        description: 'Optional PAT used to clone private repositories listed in the repos.list workspace file.'
+        required: false
+
+jobs:
+  image:
+    permissions:
+      contents: read
+      packages: write
+    uses: Duatic/duatic_ros2_base_images/.github/workflows/reusable_build_image.yml@v1
+    with:
+      ros_distro: ${{ inputs.ros_distro }}
+      architectures: ${{ format('["{0}"]', inputs.arch) }}
+      target: ci
+      # The test job pulls the image from ghcr.io.
+      publish: true
+      runner: ${{ inputs.runner }}
+      runner_arm64: ${{ inputs.runner_arm64 }}
+    secrets:
+      GH_PAT: ${{ secrets.CI_PAT }}
+
+  test:
+    name: ${{ inputs.ros_distro }} (${{ inputs.arch }})
+    needs: image
+    runs-on: ${{ inputs.arch == 'arm64' && inputs.runner_arm64 || inputs.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: read
+    env:
+      REPO: ${{ github.event.repository.name }}
+      GIT_AUTH_TOKEN: ${{ secrets.CI_PAT || github.token }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          path: src/${{ env.REPO }}
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache ccache
+        uses: actions/cache@v6
+        with:
+          path: .ccache
+          key: ccache-${{ inputs.ros_distro }}-${{ inputs.arch }}-${{ github.sha }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ inputs.ros_distro }}-${{ inputs.arch }}-${{ github.sha }}
+            ccache-${{ inputs.ros_distro }}-${{ inputs.arch }}-
+
+      - name: Build and test
+        env:
+          IMAGE: ${{ needs.image.outputs.image }}
+        run: |
+          # Mounted where duatic-with-github-auth reads the build secret, for clones the build makes.
+          token="$RUNNER_TEMP/git_auth_token"
+          printf '%s' "$GIT_AUTH_TOKEN" > "$token"
+          mkdir -p .ccache
+          # The image's entrypoint sets up the robot's ROS environment over the prebuilt stack.
+          # The image resolves dependencies leniently; CI holds the robot image's gate.
+          docker run --rm -v "$token:/run/secrets/GIT_AUTH_TOKEN:ro" \
+            -v "$PWD/.ccache:/ccache" -e CCACHE_DIR=/ccache \
+            -v "$PWD/src/$REPO:/ws/src/$REPO" -w /ws "$IMAGE" bash -c '
+            set -e
+            duatic-deps --gate
+            duatic-with-github-auth colcon build --mixin ccache
+            colcon test
+            colcon test-result --verbose'
+
+  badge:
+    name: badge
+    needs: test
+    if: ${{ always() && inputs.badge_branch && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - name: Write badge artifact
+        env:
+          RESULT: ${{ needs.test.result }}
+          REPO: ${{ github.event.repository.name }}
+          DISTRO: ${{ inputs.ros_distro }}
+          ARCH: ${{ inputs.arch }}
+        run: |
+          set -euo pipefail
+          mkdir -p badge
+          status="failing"
+          color="red"
+          case "$RESULT" in
+            success)   status="passing";   color="brightgreen";;
+            cancelled) status="cancelled"; color="lightgrey";;
+          esac
+          printf '{"schemaVersion":1,"label":"%s","message":"%s","color":"%s"}\n' \
+            "$DISTRO" "$status" "$color" > "badge/${REPO}-${DISTRO}-${ARCH}.json"
+
+      - name: Upload badge artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: badge-${{ inputs.ros_distro }}-${{ inputs.arch }}
+          path: badge/*.json
+          retention-days: 1
+          overwrite: true
