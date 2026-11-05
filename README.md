@@ -64,12 +64,12 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
 - **Dependencies** - each distro builds and tests on the repo's ci image from the
-  [image factory](https://github.com/Duatic/duatic_ros2_base_images), the same pipeline as the nightly
+  [image factory](https://github.com/Duatic/duatic_ros2_docker_images), the same pipeline as the nightly
   product images. It holds the git repositories `repos.list` collects recursively, compiled, and
   every dependency the `package.xml`, `Aptfile` and `requirements.txt` files declare. The factory
   pins every upstream branch to its commit and keys the image on that, the repo's own dependency
   manifests and the day, and reuses a published image with the same key: within a day, a run
-  rebuilds it only when a dependency or an upstream commit changed. The test job fails when the
+  rebuilds it only when a dependency or an upstream commit changed. Each leg fails when the
   image lists unresolved dependencies, the same gate the robot image holds.
 - **Architectures** - each distro builds and tests once per architecture in `architectures`, on that architecture's runner and ci image; its badge passes only when every architecture passed.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
