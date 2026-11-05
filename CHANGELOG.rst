@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.1.0 (2026-11-05)
+------------------
+* feat(ci): build the ci image and test on it in one job per leg (#54)
+
 2.0.0 (2026-11-05)
 ------------------
 * feat(ci)!: build and test on the image factory's ci image (#48)
