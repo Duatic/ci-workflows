@@ -61,7 +61,7 @@ jobs:
       # Also leaves the job logged in to GHCR, which the next steps pull the image from.
       - name: Build the ci image
         id: image
-        uses: Duatic/duatic_ros2_docker_images/actions/build-image@feat/build-image-action
+        uses: Duatic/duatic_ros2_docker_images/actions/build-image@v1
         with:
           source: src/${{ env.REPO }}
           ros_distro: ${{ inputs.ros_distro }}
