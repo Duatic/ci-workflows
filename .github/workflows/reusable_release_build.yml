@@ -189,8 +189,10 @@ jobs:
               || { echo "::error::private roots need the ARCHIVE_URL organization variable"; exit 1; }
             [ -n "$PRIVATE_URL" ] \
               || { echo "::error::private roots need the ARCHIVE_PRIVATE_URL organization variable"; exit 1; }
-            [ -n "$CLIENT_CERT" ] && [ -n "$CLIENT_KEY" ] \
-              || { echo "::error::private roots need the ARCHIVE_CLIENT_CERT and ARCHIVE_CLIENT_KEY secrets; pass secrets: inherit"; exit 1; }
+            if [ -z "$CLIENT_CERT" ] || [ -z "$CLIENT_KEY" ]; then
+              echo "::error::private roots need the ARCHIVE_CLIENT_CERT and ARCHIVE_CLIENT_KEY secrets; pass secrets: inherit"
+              exit 1
+            fi
             for r in "${roots[@]}"; do
               printf '%s' "$r" | grep -qE '^[a-z0-9_]+(/[a-z0-9_]+)*$' \
                 || { echo "::error::'$r' is not an archive root"; exit 1; }
