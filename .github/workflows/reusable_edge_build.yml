@@ -34,6 +34,21 @@ on:
         default: ''
         required: false
         type: string
+      arm64_runner:
+        description: 'Native arm64 runner label(s) for the arm64 builds, e.g. "ubuntu-24.04-arm" or a self-hosted label.'
+        default: 'ubuntu-24.04-arm'
+        required: false
+        type: string
+      architectures:
+        description: 'JSON list of the architectures to build, e.g. ["amd64"]'
+        default: '["amd64", "arm64"]'
+        required: false
+        type: string
+      private_roots:
+        description: 'Private archive roots holding dependencies besides each package''s own root, space separated'
+        default: ''
+        required: false
+        type: string
       ros_distros:
         description: 'JSON list of the ROS distros to build the packages for'
         default: '["jazzy", "kilted", "lyrical", "rolling"]'
@@ -95,7 +110,8 @@ jobs:
       matrix:
         package: ${{ fromJSON(needs.plan.outputs.build) }}
         ros_distro: ${{ fromJSON(inputs.ros_distros) }}
-    uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v1
+    uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v2
+    secrets: inherit
     with:
       tag: ${{ matrix.package.tag }}
       package: ${{ matrix.package.package }}
@@ -103,6 +119,10 @@ jobs:
       version_suffix: ${{ matrix.package.suffix }}
       archive_channels: edge stable
       runner: ${{ inputs.runner }}
+      arm64_runner: ${{ inputs.arm64_runner }}
+      architectures: ${{ inputs.architectures }}
+      root: ${{ matrix.package.root }}
+      private_roots: ${{ inputs.private_roots }}
       continue_on_failure: true
 
   publish:
