@@ -103,6 +103,8 @@ jobs:
               for p in "${patterns[@]}"; do
                 p="${p#"${p%%[![:space:]]*}"}"
                 p="${p%"${p##*[![:space:]]}"}"
+                # $p is unquoted on purpose: paths_ignore entries are globs.
+                # shellcheck disable=SC2053
                 [[ -n "$p" && "$f" == $p ]] && { ignored=true; break; }
               done
               $ignored || { echo "Builds for: $f"; build=true; break; }
@@ -210,12 +212,12 @@ jobs:
             f="badges/${REPO}-${d}-${a}.json"
             [ -f "$f" ] || printf '{"label":"%s","message":"not run","color":"lightgrey"}\n' "$d" > "$f"
           done <<<"$legs"
-          for d in $(cut -d' ' -f1 <<<"$legs" | sort -u); do
+          while read -r d; do
             jq -s '{schemaVersion: 1, label: .[0].label} + (
                 [.[] | select(.message == "failing")][0] //
                 [.[] | select(.message != "passing")][0] // .[0] | {message, color})' \
               badges/"${REPO}-${d}"-*.json > "distros/${REPO}-${d}.json"
-          done
+          done < <(cut -d' ' -f1 <<<"$legs" | sort -u)
 
       - name: Publish badges to branch
         env:
