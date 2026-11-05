@@ -1,8 +1,9 @@
 name: ROS CI
 # Builds and tests the calling repository for ONE distro on its ci image, which the image factory
-# (duatic_ros2_docker_images' build-image action) builds with the same pipeline as the nightly
-# product images, in the same job. The factory keys that image on everything it is built from and reuses a published one,
-# so a run whose dependencies and upstream commits did not change today only builds and tests.
+# (duatic_ros2_docker_images' build-image action) builds in the same job, with the same pipeline as
+# the nightly product images. The factory keys that image on everything it is built from and
+# reuses a published one, so a run whose dependencies and upstream commits did not change today
+# only builds and tests.
 # Not meant to be called directly by product repos, use ci_orchestrator.yml, which drives this
 # per distro with the matrix/gating logic.
 
