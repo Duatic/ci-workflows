@@ -49,7 +49,7 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 
 | Input | Required | Default | Description |
 |---|---|---|---|
-| `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling on each architecture once jazzy succeeds on it); a single distro name (e.g. `kilted`) builds only that one. |
+| `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `extra_distros` | no | `''` | Opt-in: comma-separated distros added to the secondary distros of the `all` matrix, e.g. `humble` for repos that still support it. |
 | `architectures` | no | `'["amd64","arm64"]'` | JSON list of the architectures every distro builds and tests on, each natively on its own runner and ci image. Private repositories without a self-hosted arm64 runner pass `'["amd64"]'`: hosted minutes are billed for them. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 legs and every other job, e.g. `self-hosted`. |

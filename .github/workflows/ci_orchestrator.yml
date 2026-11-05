@@ -5,7 +5,7 @@ name: CI orchestrator
 # Owns everything that shouldn't be re-decided per repo:
 #   - the distro x architecture matrix, each leg built and tested natively on the image
 #     factory's ci image for its architecture (amd64 and arm64 unless `architectures` says less)
-#   - gating: the primary distro (jazzy) must succeed on an architecture before the rest run on it
+#   - gating: the primary distro (jazzy) must succeed before the rest run
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #   - a push or pull request that changes only files matching paths_ignore (docs by default)
