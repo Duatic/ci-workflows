@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.0.0 (2026-11-05)
+------------------
+* feat(ci)!: build and test on the image factory's ci image (#48)
+
 1.18.1 (2026-11-02)
 -------------------
 * fix(ici): pin pip numpy to the apt version ROS is built against (#46)
