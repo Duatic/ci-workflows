@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.1.1 (2026-11-05)
+------------------
+* fix: update build-image action version (#56)
+
 2.1.0 (2026-11-05)
 ------------------
 * feat(ci): build the ci image and test on it in one job per leg (#54)
