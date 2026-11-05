@@ -5,7 +5,7 @@ name: CI orchestrator
 # Owns everything that shouldn't be re-decided per repo:
 #   - the distro x architecture matrix, each leg built and tested natively on the image
 #     factory's ci image for its architecture (amd64 and arm64 unless `architectures` says less)
-#   - gating: the primary distro (jazzy) must succeed before the rest run
+#   - gating: the primary distro (jazzy) must succeed on an architecture before the rest run on it
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #   - a push or pull request that changes only files matching paths_ignore (docs by default)
@@ -115,7 +115,11 @@ jobs:
         env:
           SEL_DISTRO: ${{ inputs.ros_distro }}
           EXTRA_DISTROS: ${{ inputs.extra_distros }}
+          ARCHITECTURES: ${{ inputs.architectures }}
         run: |
+          # Each architecture has its own jobs below, so any other value would silently build nothing.
+          jq -e 'length > 0 and all(.[]; . == "amd64" or . == "arm64")' <<<"$ARCHITECTURES" >/dev/null ||
+            { echo "::error::architectures must list amd64 and/or arm64, got ${ARCHITECTURES}"; exit 1; }
           entry() { printf '"%s"' "$1"; }
           if [ -z "$SEL_DISTRO" ] || [ "$SEL_DISTRO" = "all" ]; then
             primary="[$(entry jazzy)]"
@@ -129,20 +133,22 @@ jobs:
           echo "primary=${primary}" >> "$GITHUB_OUTPUT"
           echo "secondary=${secondary}" >> "$GITHUB_OUTPUT"
 
-  primary:
+  # One primary and one secondary job per architecture, so a secondary leg waits only on the
+  # primary leg of its own architecture. arch stays a matrix axis to keep the check names.
+  primary-amd64:
     name: primary
     needs: prepare
-    if: ${{ needs.prepare.outputs.build == 'true' }}
+    if: ${{ needs.prepare.outputs.build == 'true' && contains(fromJSON(inputs.architectures), 'amd64') }}
     strategy:
       fail-fast: false
       matrix:
         ros_distro: ${{ fromJSON(needs.prepare.outputs.primary) }}
-        arch: ${{ fromJSON(inputs.architectures) }}
+        arch: [amd64]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/reusable_ci.yml
-    with:
+    with: &ci_inputs
       ros_distro: ${{ matrix.ros_distro }}
       arch: ${{ matrix.arch }}
       runner: ${{ inputs.runner }}
@@ -150,25 +156,52 @@ jobs:
       badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
-  secondary:
+  primary-arm64:
+    name: primary
+    needs: prepare
+    if: ${{ needs.prepare.outputs.build == 'true' && contains(fromJSON(inputs.architectures), 'arm64') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: ${{ fromJSON(needs.prepare.outputs.primary) }}
+        arch: [arm64]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable_ci.yml
+    with: *ci_inputs
+    secrets: inherit
+
+  secondary-amd64:
     name: secondary
-    needs: [prepare, primary]
+    needs: [prepare, primary-amd64]
     if: ${{ needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     strategy:
       fail-fast: false
       matrix:
         ros_distro: ${{ fromJSON(needs.prepare.outputs.secondary) }}
-        arch: ${{ fromJSON(inputs.architectures) }}
+        arch: [amd64]
     permissions:
       contents: read
       packages: write
     uses: ./.github/workflows/reusable_ci.yml
-    with:
-      ros_distro: ${{ matrix.ros_distro }}
-      arch: ${{ matrix.arch }}
-      runner: ${{ inputs.runner }}
-      runner_arm64: ${{ inputs.runner_arm64 }}
-      badge_branch: ${{ inputs.badge_branch }}
+    with: *ci_inputs
+    secrets: inherit
+
+  secondary-arm64:
+    name: secondary
+    needs: [prepare, primary-arm64]
+    if: ${{ needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        ros_distro: ${{ fromJSON(needs.prepare.outputs.secondary) }}
+        arch: [arm64]
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/reusable_ci.yml
+    with: *ci_inputs
     secrets: inherit
 
   pre-commit:
@@ -184,7 +217,7 @@ jobs:
   # Coalesces every leg's badge artifact into a single badges branch commit.
   badges:
     name: Publish status badges
-    needs: [prepare, primary, secondary]
+    needs: [prepare, primary-amd64, primary-arm64, secondary-amd64, secondary-arm64]
     if: ${{ always() && inputs.badge_branch && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
