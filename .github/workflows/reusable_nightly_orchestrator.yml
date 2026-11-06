@@ -20,6 +20,16 @@ on:
         default: false
         required: false
         type: boolean
+      runner:
+        description: 'Runner label(s) for the amd64 legs and every other job, e.g. "ubuntu-latest" or "self-hosted".'
+        default: 'ubuntu-latest'
+        required: false
+        type: string
+      runner_arm64:
+        description: 'Runner label(s) for the arm64 legs.'
+        default: 'ubuntu-24.04-arm'
+        required: false
+        type: string
 
 jobs:
   ci:
@@ -29,6 +39,8 @@ jobs:
     uses: ./.github/workflows/ci_orchestrator.yml
     with:
       ros_distro: ${{ inputs.ros_distro || 'all' }}
+      runner: ${{ inputs.runner }}
+      runner_arm64: ${{ inputs.runner_arm64 }}
     secrets: inherit
 
   image:
@@ -41,4 +53,6 @@ jobs:
     with:
       ros_distro: ${{ inputs.ros_distro }}
       publish: ${{ inputs.publish }}
+      runner: ${{ inputs.runner }}
+      runner_arm64: ${{ inputs.runner_arm64 }}
     secrets: inherit
