@@ -2,6 +2,12 @@
 Changelog
 ^^^^^^^^^
 
+2.2.0 (2026-11-06)
+------------------
+* feat(ci): run CI before the nightly images and always publish badges (#60)
+* feat(release): read private archive roots with a client certificate (#59)
+* fix(orchestrator): gate secondary distros per architecture (#58)
+
 2.1.1 (2026-11-05)
 ------------------
 * fix: update build-image action version (#56)
