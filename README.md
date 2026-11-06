@@ -137,6 +137,7 @@ to a lean one when the workspace does not compile.
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 CI legs and image builds, and every other job. |
 | `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the arm64 CI legs and image builds. |
 | `architectures` | no | `'["amd64","arm64"]'` | JSON list of the architectures CI tests and the images build for. |
+| `extra_distros` | no | `''` | Comma-separated distros to test and build besides the default set when `ros_distro` is empty, e.g. `humble`. |
 
 Secrets come through `secrets: inherit`: `CI_PAT` for CI, and `GH_PAT`, `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN` for the images. The repo's `ci.yml` keeps its `pull_request` and `push` triggers
