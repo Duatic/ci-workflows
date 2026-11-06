@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.3.0 (2026-11-06)
+------------------
+* feat(nightly): accept extra_distros in the nightly orchestrator (#66)
+
 2.2.2 (2026-11-06)
 ------------------
 * feat(nightly): accept an architectures input in the nightly orchestrator (#64)
