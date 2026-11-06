@@ -31,8 +31,8 @@ concurrency, and the draft-PR policy, and internally drives the two leaf workflo
 (`reusable_ci.yml`, `pre-commit.yml`) that most repos never reference directly.
 
 A repo that publishes nightly images from the image factory schedules
-**`nightly_orchestrator.yml`** instead of scheduling `ci_orchestrator.yml`: it runs the CI matrix,
-then the nightly images on the ci images CI just built. See
+**`reusable_nightly_orchestrator.yml`** instead of scheduling `ci_orchestrator.yml`: it runs the
+CI matrix, then the nightly images on the ci images CI just built. See
 [Example: product repo with nightly images](#example-product-repo-with-nightly-images).
 
 **`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
@@ -80,7 +80,7 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 
 ## Example: library repo, no private deps
 
-This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. A repo with nightly images drops the `schedule` trigger here and schedules `nightly_orchestrator.yml` instead.
+This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. A repo with nightly images drops the `schedule` trigger here and schedules `reusable_nightly_orchestrator.yml` instead.
 
 ```yaml
 name: CI
@@ -130,7 +130,7 @@ jobs:
 
 ## Example: product repo with nightly images
 
-`nightly_orchestrator.yml` runs `ci_orchestrator.yml` over the full matrix with status badges,
+`reusable_nightly_orchestrator.yml` runs `ci_orchestrator.yml` over the full matrix with status badges,
 then the image factory's `reusable_nightly_image.yml`. The images build after CI whatever its
 result, so they reuse the day's ci images instead of building them again; a dev image falls back
 to a lean one when the workspace does not compile.
@@ -165,7 +165,7 @@ jobs:
     permissions:
       contents: write   # badges and image-badges branches
       packages: write
-    uses: Duatic/ci-workflows/.github/workflows/nightly_orchestrator.yml@v2
+    uses: Duatic/ci-workflows/.github/workflows/reusable_nightly_orchestrator.yml@v2
     with:
       ros_distro: ${{ inputs.ros_distro }}
       publish: ${{ github.event_name == 'schedule' || inputs.publish }}

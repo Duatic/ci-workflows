@@ -13,7 +13,8 @@ name: CI orchestrator
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
 # optionally a single distro to build via workflow_dispatch. A repository that publishes nightly
-# images schedules nightly_orchestrator.yml instead, which runs this before its image build.
+# images schedules reusable_nightly_orchestrator.yml instead, which runs this before its image
+# build.
 
 on:
   workflow_call:

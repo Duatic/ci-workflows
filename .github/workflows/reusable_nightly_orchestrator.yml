@@ -1,6 +1,6 @@
 name: Nightly orchestrator
 # Consumer-facing entry point for the nightly run of a repository that publishes nightly images.
-# Consumers: uses: Duatic/ci-workflows/.github/workflows/nightly_orchestrator.yml@v2
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/reusable_nightly_orchestrator.yml@v2
 #
 # Runs CI (ci_orchestrator.yml) over the full matrix, then the image factory's nightly dev and
 # runtime images, which reuse the ci images CI just built. The images build whatever CI's result:
