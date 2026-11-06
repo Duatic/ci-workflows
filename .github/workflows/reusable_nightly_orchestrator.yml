@@ -35,6 +35,11 @@ on:
         default: '["amd64","arm64"]'
         required: false
         type: string
+      extra_distros:
+        description: 'Comma-separated distros to test and build besides the default set when ros_distro is empty, e.g. "humble".'
+        default: ''
+        required: false
+        type: string
 
 jobs:
   ci:
@@ -44,6 +49,7 @@ jobs:
     uses: ./.github/workflows/ci_orchestrator.yml
     with:
       ros_distro: ${{ inputs.ros_distro || 'all' }}
+      extra_distros: ${{ inputs.extra_distros }}
       runner: ${{ inputs.runner }}
       runner_arm64: ${{ inputs.runner_arm64 }}
       architectures: ${{ inputs.architectures }}
@@ -57,7 +63,8 @@ jobs:
       packages: write
     uses: Duatic/duatic_ros2_docker_images/.github/workflows/reusable_nightly_image.yml@v1
     with:
-      ros_distro: ${{ inputs.ros_distro }}
+      # The image factory's default set, as in ci_orchestrator.yml, plus the extra distros.
+      ros_distro: ${{ inputs.ros_distro || (inputs.extra_distros && format('{0},jazzy,kilted,lyrical,rolling', inputs.extra_distros)) || '' }}
       publish: ${{ inputs.publish }}
       runner: ${{ inputs.runner }}
       runner_arm64: ${{ inputs.runner_arm64 }}
