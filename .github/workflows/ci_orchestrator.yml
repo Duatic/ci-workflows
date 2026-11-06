@@ -12,9 +12,8 @@ name: CI orchestrator
 #     skips the build and test legs; they report as skipped, which passes required checks
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
-# optionally a single distro to build via workflow_dispatch. Schedule CI before the nightly
-# image build (e.g. 00:30 and 01:30 Europe/Zurich): the first CI run of the day builds that
-# day's ci image, which the nightly then reuses.
+# optionally a single distro to build via workflow_dispatch. A repository that publishes nightly
+# images schedules nightly_orchestrator.yml instead, which runs this before its image build.
 
 on:
   workflow_call:

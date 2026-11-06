@@ -26,9 +26,14 @@ moving major; see [Package releases](#package-releases).
 
 ## What consumers call
 
-For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, gating,
+For CI, repos call **`ci_orchestrator.yml`** - it owns the distro matrix, gating,
 concurrency, and the draft-PR policy, and internally drives the two leaf workflows
 (`reusable_ci.yml`, `pre-commit.yml`) that most repos never reference directly.
+
+A repo that publishes nightly images from the image factory schedules
+**`nightly_orchestrator.yml`** instead of scheduling `ci_orchestrator.yml`: it runs the CI matrix,
+then the nightly images on the ci images CI just built. See
+[Example: product repo with nightly images](#example-product-repo-with-nightly-images).
 
 **`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
@@ -76,7 +81,7 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 
 ## Example: library repo, no private deps
 
-This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. Keep the cron before the repo's nightly image build (e.g. 00:30 and 01:30): the first CI run of the day builds that day's ci image, which the nightly reuses.
+This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. A repo with nightly images drops the `schedule` trigger here and schedules `nightly_orchestrator.yml` instead.
 
 ```yaml
 name: CI
@@ -121,6 +126,50 @@ jobs:
     with:
       ros_distro: ${{ inputs.ros_distro }}
       runner: self-hosted
+    secrets: inherit
+```
+
+## Example: product repo with nightly images
+
+`nightly_orchestrator.yml` runs `ci_orchestrator.yml` over the full matrix with status badges,
+then the image factory's `reusable_nightly_image.yml`. The images build after CI whatever its
+result, so they reuse the day's ci images instead of building them again; a dev image falls back
+to a lean one when the workspace does not compile.
+
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `ros_distro` | no | `''` | A single distro to test and build, e.g. `kilted`. Empty runs every distro. |
+| `publish` | no | `false` | Push the images to ghcr.io and publish their badges to the `image-badges` branch. |
+
+Secrets come through `secrets: inherit`: `CI_PAT` for CI, and `GH_PAT`, `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` for the images. The repo's `ci.yml` keeps its `pull_request` and `push` triggers
+and has no `schedule`.
+
+```yaml
+name: Nightly
+on:
+  workflow_dispatch:
+    inputs:
+      ros_distro:
+        description: 'Distro to build, empty for all'
+        default: ''
+      publish:
+        description: 'Push the images to ghcr.io'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '30 0 * * *'
+      timezone: Europe/Zurich
+
+jobs:
+  nightly:
+    permissions:
+      contents: write   # badges and image-badges branches
+      packages: write
+    uses: Duatic/ci-workflows/.github/workflows/nightly_orchestrator.yml@v2
+    with:
+      ros_distro: ${{ inputs.ros_distro }}
+      publish: ${{ github.event_name == 'schedule' || inputs.publish }}
     secrets: inherit
 ```
 
