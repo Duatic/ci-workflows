@@ -2,7 +2,7 @@
 Changelog
 ^^^^^^^^^
 
-2.3.0 (2026-11-06)
+2.2.1 (2026-11-06)
 ------------------
 * feat(nightly): accept runner inputs in the nightly orchestrator (#62)
 
