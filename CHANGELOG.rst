@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.2.1 (2026-11-06)
+------------------
+* feat(nightly): accept runner inputs in the nightly orchestrator (#62)
+
 2.2.0 (2026-11-06)
 ------------------
 * feat(ci): run CI before the nightly images and always publish badges (#60)
