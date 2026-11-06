@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.2.2 (2026-11-06)
+------------------
+* feat(nightly): accept an architectures input in the nightly orchestrator (#64)
+
 2.2.1 (2026-11-06)
 ------------------
 * feat(nightly): accept runner inputs in the nightly orchestrator (#62)
