@@ -54,4 +54,5 @@ jobs:
       ros_distro: ${{ inputs.ros_distro }}
       publish: ${{ inputs.publish }}
       runner: ${{ inputs.runner }}
+      runner_arm64: ${{ inputs.runner_arm64 }}
     secrets: inherit

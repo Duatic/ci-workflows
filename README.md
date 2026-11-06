@@ -134,8 +134,8 @@ to a lean one when the workspace does not compile.
 |---|---|---|---|
 | `ros_distro` | no | `''` | A single distro to test and build, e.g. `kilted`. Empty runs every distro. |
 | `publish` | no | `false` | Push the images to ghcr.io and publish their badges to the `image-badges` branch. |
-| `runner` | no | `ubuntu-latest` | Runner label(s) for the CI amd64 legs and every other job, image builds included except arm64. |
-| `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the CI arm64 legs. |
+| `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 CI legs and image builds, and every other job. |
+| `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the arm64 CI legs and image builds. |
 
 Secrets come through `secrets: inherit`: `CI_PAT` for CI, and `GH_PAT`, `DOCKERHUB_USERNAME` and
 `DOCKERHUB_TOKEN` for the images. The repo's `ci.yml` keeps its `pull_request` and `push` triggers
