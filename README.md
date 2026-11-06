@@ -30,11 +30,6 @@ For CI, repos call **`ci_orchestrator.yml`** - it owns the distro matrix, gating
 concurrency, and the draft-PR policy, and internally drives the two leaf workflows
 (`reusable_ci.yml`, `pre-commit.yml`) that most repos never reference directly.
 
-A repo that publishes nightly images from the image factory schedules
-**`reusable_nightly_orchestrator.yml`** instead of scheduling `ci_orchestrator.yml`: it runs the
-CI matrix, then the nightly images on the ci images CI just built. See
-[Example: product repo with nightly images](#example-product-repo-with-nightly-images).
-
 **`claude_review.yml`** is the other consumer-facing workflow, and is unrelated to CI: it runs a
 Claude code review on a PR when someone comments `@claude review` on it. It's opt-in per repo and
 never runs on its own. See [Claude code review](#claude-code-review).

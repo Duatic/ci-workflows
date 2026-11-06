@@ -11,7 +11,7 @@ on:
   workflow_call:
     inputs:
       ros_distro:
-        description: 'Distro to test and build, e.g. "kilted". Empty runs every distro.'
+        description: 'Distro to test and build, e.g. "jazzy". Empty runs every distro.'
         default: ''
         required: false
         type: string
