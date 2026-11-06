@@ -30,6 +30,11 @@ on:
         default: 'ubuntu-24.04-arm'
         required: false
         type: string
+      architectures:
+        description: 'JSON list of the architectures to test and build images for, of amd64 and arm64.'
+        default: '["amd64","arm64"]'
+        required: false
+        type: string
 
 jobs:
   ci:
@@ -41,6 +46,7 @@ jobs:
       ros_distro: ${{ inputs.ros_distro || 'all' }}
       runner: ${{ inputs.runner }}
       runner_arm64: ${{ inputs.runner_arm64 }}
+      architectures: ${{ inputs.architectures }}
     secrets: inherit
 
   image:
@@ -55,4 +61,5 @@ jobs:
       publish: ${{ inputs.publish }}
       runner: ${{ inputs.runner }}
       runner_arm64: ${{ inputs.runner_arm64 }}
+      architectures: ${{ inputs.architectures }}
     secrets: inherit
