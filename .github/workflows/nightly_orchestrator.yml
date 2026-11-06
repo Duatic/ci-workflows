@@ -29,7 +29,6 @@ jobs:
     uses: ./.github/workflows/ci_orchestrator.yml
     with:
       ros_distro: ${{ inputs.ros_distro || 'all' }}
-      badge_branch: true
     secrets: inherit
 
   image:

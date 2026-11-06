@@ -43,11 +43,6 @@ on:
         default: 'ubuntu-24.04-arm'
         required: false
         type: string
-      badge_branch:
-        description: 'Publish per-distro pass/fail status badges as SVGs to the "badges" branch of the calling repository. Requires the caller to grant "contents: write". Only written for runs on the default branch.'
-        default: false
-        required: false
-        type: boolean
       devtools_ref:
         description: 'Take .pre-commit-config.yaml from this duatic_devtools revision. Empty uses the calling repository''s own config.'
         default: ''
@@ -152,7 +147,6 @@ jobs:
       arch: ${{ matrix.arch }}
       runner: ${{ inputs.runner }}
       runner_arm64: ${{ inputs.runner_arm64 }}
-      badge_branch: ${{ inputs.badge_branch }}
     secrets: inherit
 
   primary-arm64:
@@ -217,7 +211,7 @@ jobs:
   badges:
     name: Publish status badges
     needs: [prepare, primary-amd64, primary-arm64, secondary-amd64, secondary-arm64]
-    if: ${{ always() && inputs.badge_branch && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts

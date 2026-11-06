@@ -59,7 +59,6 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 | `architectures` | no | `'["amd64","arm64"]'` | JSON list of the architectures every distro builds and tests on, each natively on its own runner and ci image. Private repositories without a self-hosted arm64 runner pass `'["amd64"]'`: hosted minutes are billed for them. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 legs and every other job, e.g. `self-hosted`. |
 | `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the arm64 legs. |
-| `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 | `paths_ignore` | no | docs and images | Comma-separated shell patterns (`*` also matches `/`). A push or pull request that changes only matching files skips building and testing; the skipped legs pass required checks. The default covers `*.md`, `docs/*`, `LICENSE*`, images and the issue and pull request templates. |
 
@@ -104,7 +103,7 @@ on:
 jobs:
   ci:
     permissions:
-      contents: read
+      contents: write   # badges branch
       packages: write
     uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
     with:
@@ -120,7 +119,7 @@ Same file, plus `runner: self-hosted`. The `repos.list` file at the repo root an
 jobs:
   ci:
     permissions:
-      contents: read
+      contents: write   # badges branch
       packages: write
     uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
     with:
@@ -173,28 +172,17 @@ jobs:
     secrets: inherit
 ```
 
-## Status badges (opt-in, `badges` branch)
+## Status badges (`badges` branch)
 
-The orchestrator can commit one SVG per distro to a `badges` branch of the calling repository,
-using the job's `GITHUB_TOKEN`. No PAT or gist is needed, and badges of private repos stay private.
+The orchestrator commits one SVG per distro to a `badges` branch of the calling repository,
+using the job's `GITHUB_TOKEN`, so the caller grants `contents: write`. No PAT or gist is needed,
+and badges of private repos stay private.
 
-1. Grant `contents: write` on the job and pass `badge_branch: true`:
-   ```yaml
-   jobs:
-     ci:
-       permissions:
-         contents: write
-         packages: write
-       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
-       with:
-         ros_distro: ${{ inputs.ros_distro }}
-         badge_branch: true
-       secrets: inherit
-   ```
-2. After the first run on the default branch has created the branch, point README badges at it:
-   ```markdown
-   [![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
-   ```
+After the first run on the default branch has created the branch, point README badges at it:
+
+```markdown
+[![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
+```
 
 Badges are only written for runs on the default branch. A run that builds a single distro updates only that
 distro's badge. The build and pre-commit jobs run with `contents: read`; only the badges job uses
