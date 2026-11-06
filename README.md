@@ -265,8 +265,11 @@ declares `<duatic_archive_root>`, like the tag workflow, at `<version>+git<commi
 before the next one. For a squash- or merge-committed
 main, that is the order commits landed in. What built is handed to the publisher for the archive's `edge` channel, which
 keeps the newest builds of each package. `nightly` is not built: once a day the publisher switches
-it to what `edge` publishes. It takes the same `runner`, `publisher` and `ros_distros` inputs as the
-tag workflow and needs `secrets: inherit` the same way.
+it to what `edge` publishes. It takes the same inputs as the tag workflow and needs
+`secrets: inherit` the same way.
+
+Both take `runner`, `arm64_runner`, `architectures`, `publisher`, `ros_distros` and
+`private_roots`, and pass the build workflow below each package's own root.
 
 ```yaml
 # .github/workflows/edge.yml
@@ -297,6 +300,12 @@ archive the organization variable `ARCHIVE_URL` names, read from the channels in
 without a build of main comes from its release. The archive's key is fetched from it and used only
 when its fingerprint is `ARCHIVE_KEY_FINGERPRINT`. Without `ARCHIVE_URL` the build resolves no
 such dependency and fails at the first one. Signing and publishing belong to the archive host.
+
+A package in a private root also reads that root, and every root listed in `private_roots`, from
+under the organization variable `ARCHIVE_PRIVATE_URL`, presenting the client certificate in the
+secrets `ARCHIVE_CLIENT_CERT` and `ARCHIVE_CLIENT_KEY` (PEM, ECDSA P-256). Without any of the three
+such a build fails before it starts. The certificate is written to the runner's temporary directory
+for the build and removed after it, whether the build passed or not.
 Files stored in Git LFS are fetched with the checkout.
 
 **`reusable_release_publish.yml`** takes one of those artifacts and publishes it into a signed archive root,

@@ -50,6 +50,14 @@ on:
         description: 'Archive channels whose packages the build depends on, e.g. "edge stable" for a build of main'
         default: 'stable'
         type: string
+      root:
+        description: 'The archive root the package declares; a private one is read with the client certificate'
+        default: ''
+        type: string
+      private_roots:
+        description: 'Other private archive roots holding dependencies, space separated, e.g. "products/example"'
+        default: ''
+        type: string
   workflow_call:
     inputs:
       repository:
@@ -93,6 +101,16 @@ on:
       archive_channels:
         description: 'Archive channels whose packages the build depends on, e.g. "edge stable" for a build of main'
         default: 'stable'
+        required: false
+        type: string
+      root:
+        description: 'The archive root the package declares; a private one is read with the client certificate'
+        default: ''
+        required: false
+        type: string
+      private_roots:
+        description: 'Other private archive roots holding dependencies, space separated, e.g. "products/example"'
+        default: ''
         required: false
         type: string
     outputs:
@@ -151,12 +169,47 @@ jobs:
           SUFFIX: ${{ inputs.version_suffix }}
           ARCHIVE_URL: ${{ vars.ARCHIVE_URL }}
           ARCHIVE_CHANNELS: ${{ inputs.archive_channels }}
+          ROOT: ${{ inputs.root }}
+          PRIVATE_ROOTS: ${{ inputs.private_roots }}
+          PRIVATE_URL: ${{ vars.ARCHIVE_PRIVATE_URL }}
+          CLIENT_CERT: ${{ secrets.ARCHIVE_CLIENT_CERT }}
+          CLIENT_KEY: ${{ secrets.ARCHIVE_CLIENT_KEY }}
         run: |
           mkdir -p "$RUNNER_TEMP/out"
+          # The package's own root, unless public, and the other private roots it depends on.
+          roots=()
+          case "$ROOT" in "" | public) ;; *) roots+=("$ROOT") ;; esac
+          read -r -a extra <<< "$PRIVATE_ROOTS"
+          for r in "${extra[@]}"; do
+            case " ${roots[*]} " in *" $r "*) ;; *) roots+=("$r") ;; esac
+          done
+          urls="$ARCHIVE_URL"
+          if [ ${#roots[@]} -gt 0 ]; then
+            [ -n "$ARCHIVE_URL" ] \
+              || { echo "::error::private roots need the ARCHIVE_URL organization variable"; exit 1; }
+            [ -n "$PRIVATE_URL" ] \
+              || { echo "::error::private roots need the ARCHIVE_PRIVATE_URL organization variable"; exit 1; }
+            if [ -z "$CLIENT_CERT" ] || [ -z "$CLIENT_KEY" ]; then
+              echo "::error::private roots need the ARCHIVE_CLIENT_CERT and ARCHIVE_CLIENT_KEY secrets; pass secrets: inherit"
+              exit 1
+            fi
+            for r in "${roots[@]}"; do
+              printf '%s' "$r" | grep -qE '^[a-z0-9_]+(/[a-z0-9_]+)*$' \
+                || { echo "::error::'$r' is not an archive root"; exit 1; }
+              urls+=" ${PRIVATE_URL%/}/$r"
+            done
+            install -d -m 700 "$RUNNER_TEMP/client"
+            printf '%s\n' "$CLIENT_CERT" > "$RUNNER_TEMP/client/client.crt"
+            (umask 077 && printf '%s\n' "$CLIENT_KEY" > "$RUNNER_TEMP/client/client.key")
+          fi
           archive=()
-          if [ -n "$ARCHIVE_URL" ]; then
-            archive=(-e ARCHIVE_URL="$ARCHIVE_URL" -e ARCHIVE_CHANNELS="$ARCHIVE_CHANNELS"
+          if [ -n "$urls" ]; then
+            archive=(-e ARCHIVE_URL="$urls" -e ARCHIVE_CHANNELS="$ARCHIVE_CHANNELS"
               -e ARCHIVE_KEYRING=/keys/duatic-archive.gpg -v "$RUNNER_TEMP/keys:/keys:ro")
+          fi
+          if [ ${#roots[@]} -gt 0 ]; then
+            archive+=(-e ARCHIVE_CLIENT_CERT=/client/client.crt -e ARCHIVE_CLIENT_KEY=/client/client.key
+              -v "$RUNNER_TEMP/client:/client:ro")
           fi
           docker run --rm -i --platform "linux/$ARCH" \
             -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
@@ -182,6 +235,11 @@ jobs:
             done
           fi
           echo "artifact=${PACKAGE}-${TAG//\//-}-${ROS_DISTRO_TARGET}" >> "$GITHUB_OUTPUT"
+
+      # A self-hosted runner keeps its temporary directory between jobs.
+      - name: Remove the client certificate
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/client"
 
       # Debug symbols are a .ddeb, which a *.deb glob misses. build_pkg.sh collects them and the
       # archive indexes them, so leaving them here is where they would be lost. A package declaring
