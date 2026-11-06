@@ -1,0 +1,44 @@
+name: Nightly orchestrator
+# Consumer-facing entry point for the nightly run of a repository that publishes nightly images.
+# Consumers: uses: Duatic/ci-workflows/.github/workflows/reusable_nightly_orchestrator.yml@v2
+#
+# Runs CI (ci_orchestrator.yml) over the full matrix, then the image factory's nightly dev and
+# runtime images, which reuse the ci images CI just built. The images build whatever CI's result:
+# a dev image falls back to a lean one when the workspace does not compile.
+# A repository calling this keeps no schedule on its ci_orchestrator.yml caller.
+
+on:
+  workflow_call:
+    inputs:
+      ros_distro:
+        description: 'Distro to test and build, e.g. "jazzy". Empty runs every distro.'
+        default: ''
+        required: false
+        type: string
+      publish:
+        description: 'Push the images to ghcr.io and publish their badges.'
+        default: false
+        required: false
+        type: boolean
+
+jobs:
+  ci:
+    permissions:
+      contents: write   # badges branch
+      packages: write
+    uses: ./.github/workflows/ci_orchestrator.yml
+    with:
+      ros_distro: ${{ inputs.ros_distro || 'all' }}
+    secrets: inherit
+
+  image:
+    needs: ci
+    if: ${{ !cancelled() }}
+    permissions:
+      contents: write   # image-badges branch
+      packages: write
+    uses: Duatic/duatic_ros2_docker_images/.github/workflows/reusable_nightly_image.yml@v1
+    with:
+      ros_distro: ${{ inputs.ros_distro }}
+      publish: ${{ inputs.publish }}
+    secrets: inherit

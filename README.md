@@ -26,7 +26,7 @@ moving major; see [Package releases](#package-releases).
 
 ## What consumers call
 
-For CI, repos only ever call **`ci_orchestrator.yml`** - it owns the distro matrix, gating,
+For CI, repos call **`ci_orchestrator.yml`** - it owns the distro matrix, gating,
 concurrency, and the draft-PR policy, and internally drives the two leaf workflows
 (`reusable_ci.yml`, `pre-commit.yml`) that most repos never reference directly.
 
@@ -54,7 +54,6 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 | `architectures` | no | `'["amd64","arm64"]'` | JSON list of the architectures every distro builds and tests on, each natively on its own runner and ci image. Private repositories without a self-hosted arm64 runner pass `'["amd64"]'`: hosted minutes are billed for them. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 legs and every other job, e.g. `self-hosted`. |
 | `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the arm64 legs. |
-| `badge_branch` | no | `false` | Opt-in: publish per-distro pass/fail status badges as SVGs to the `badges` branch of the calling repository. See [Status badges](#status-badges-opt-in-badges-branch). |
 | `devtools_ref` | no | `''` | Opt-in: take `.pre-commit-config.yaml` from this `duatic_devtools` revision, e.g. `v1`, instead of the copy in the calling repository. |
 | `paths_ignore` | no | docs and images | Comma-separated shell patterns (`*` also matches `/`). A push or pull request that changes only matching files skips building and testing; the skipped legs pass required checks. The default covers `*.md`, `docs/*`, `LICENSE*`, images and the issue and pull request templates. |
 
@@ -76,7 +75,7 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
 
 ## Example: library repo, no private deps
 
-This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. Keep the cron before the repo's nightly image build (e.g. 00:30 and 01:30): the first CI run of the day builds that day's ci image, which the nightly reuses.
+This is the *entire* CI file a typical repo needs. The only things meant to be edited per repo are the `cron`/`timezone` and, whether it has a secret to inherit. A repo with nightly images drops the `schedule` trigger here and schedules `reusable_nightly_orchestrator.yml` instead.
 
 ```yaml
 name: CI
@@ -99,7 +98,7 @@ on:
 jobs:
   ci:
     permissions:
-      contents: read
+      contents: write   # badges branch
       packages: write
     uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
     with:
@@ -115,7 +114,7 @@ Same file, plus `runner: self-hosted`. The `repos.list` file at the repo root an
 jobs:
   ci:
     permissions:
-      contents: read
+      contents: write   # badges branch
       packages: write
     uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
     with:
@@ -124,28 +123,61 @@ jobs:
     secrets: inherit
 ```
 
-## Status badges (opt-in, `badges` branch)
+## Example: product repo with nightly images
 
-The orchestrator can commit one SVG per distro to a `badges` branch of the calling repository,
-using the job's `GITHUB_TOKEN`. No PAT or gist is needed, and badges of private repos stay private.
+`reusable_nightly_orchestrator.yml` runs `ci_orchestrator.yml` over the full matrix with status badges,
+then the image factory's `reusable_nightly_image.yml`. The images build after CI whatever its
+result, so they reuse the day's ci images instead of building them again; a dev image falls back
+to a lean one when the workspace does not compile.
 
-1. Grant `contents: write` on the job and pass `badge_branch: true`:
-   ```yaml
-   jobs:
-     ci:
-       permissions:
-         contents: write
-         packages: write
-       uses: Duatic/ci-workflows/.github/workflows/ci_orchestrator.yml@v2
-       with:
-         ros_distro: ${{ inputs.ros_distro }}
-         badge_branch: true
-       secrets: inherit
-   ```
-2. After the first run on the default branch has created the branch, point README badges at it:
-   ```markdown
-   [![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
-   ```
+| Input | Required | Default | Description |
+|---|---|---|---|
+| `ros_distro` | no | `''` | A single distro to test and build, e.g. `kilted`. Empty runs every distro. |
+| `publish` | no | `false` | Push the images to ghcr.io and publish their badges to the `image-badges` branch. |
+
+Secrets come through `secrets: inherit`: `CI_PAT` for CI, and `GH_PAT`, `DOCKERHUB_USERNAME` and
+`DOCKERHUB_TOKEN` for the images. The repo's `ci.yml` keeps its `pull_request` and `push` triggers
+and has no `schedule`.
+
+```yaml
+name: Nightly
+on:
+  workflow_dispatch:
+    inputs:
+      ros_distro:
+        description: 'Distro to build, empty for all'
+        default: ''
+      publish:
+        description: 'Push the images to ghcr.io'
+        type: boolean
+        default: false
+  schedule:
+    - cron: '30 0 * * *'
+      timezone: Europe/Zurich
+
+jobs:
+  nightly:
+    permissions:
+      contents: write   # badges and image-badges branches
+      packages: write
+    uses: Duatic/ci-workflows/.github/workflows/reusable_nightly_orchestrator.yml@v2
+    with:
+      ros_distro: ${{ inputs.ros_distro }}
+      publish: ${{ github.event_name == 'schedule' || inputs.publish }}
+    secrets: inherit
+```
+
+## Status badges (`badges` branch)
+
+The orchestrator commits one SVG per distro to a `badges` branch of the calling repository,
+using the job's `GITHUB_TOKEN`, so the caller grants `contents: write`. No PAT or gist is needed,
+and badges of private repos stay private.
+
+After the first run on the default branch has created the branch, point README badges at it:
+
+```markdown
+[![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
+```
 
 Badges are only written for runs on the default branch. A run that builds a single distro updates only that
 distro's badge. The build and pre-commit jobs run with `contents: read`; only the badges job uses
