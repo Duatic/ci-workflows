@@ -307,8 +307,8 @@ it to what `edge` publishes. It takes the same inputs as the tag workflow and ne
 Both take `runner`, `arm64_runner`, `architectures`, `publisher`, `ros_distros` and
 `private_roots`, and pass the build workflow below each package's own root.
 
-A package declaring `<duatic_package_kind>system</duatic_package_kind>` in its `<export>` needs no
-ROS and carries no distro in its name, so both build it once per Ubuntu release a distro in
+A package declaring `<duatic_package_kind>system</duatic_package_kind>` in its `<export>`, named
+`duatic_*`, needs no ROS and carries no distro in its name, so both build it once per Ubuntu release a distro in
 `ros_distros` is on, in plain `ubuntu:<codename>` rather than a ROS image. It is published through
 that release's system distro: humble on jammy, jazzy on noble, lyrical on resolute.
 
