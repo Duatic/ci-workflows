@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.4.0 (2026-11-07)
+------------------
+* feat(release): build system packages once per Ubuntu release (#68)
+
 2.3.0 (2026-11-06)
 ------------------
 * feat(nightly): accept extra_distros in the nightly orchestrator (#66)
