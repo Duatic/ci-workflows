@@ -48,3 +48,5 @@ jobs:
         run: release/test_released_packages.sh
       - name: Edge packages suite
         run: release/test_edge_packages.sh
+      - name: Build matrix suite
+        run: release/test_build_matrix.sh

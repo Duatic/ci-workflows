@@ -66,7 +66,14 @@ git add -A && commit "2026-10-27T15:30:12+02:00" "feat: routed packages"
 sha="$(git rev-parse HEAD)"
 s="+git20261027133012.${sha:0:7}"
 check "every routed package, at the commit time in UTC and the commit" \
-    "[{\"package\": \"gated\", \"version\": \"2.0.0$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"private/robots\"}, {\"package\": \"routed\", \"version\": \"0.4.1$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"public\"}]"
+    "[{\"package\": \"gated\", \"version\": \"2.0.0$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"private/robots\", \"kind\": \"ros\"}, {\"package\": \"routed\", \"version\": \"0.4.1$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"public\", \"kind\": \"ros\"}]"
+
+sed -i 's|<export>|<export><duatic_package_kind>system</duatic_package_kind>|' "$WORK/nested/routed/package.xml"
+git add -A && commit "2026-10-27T15:30:12+02:00" "feat: a system package"
+sha="$(git rev-parse HEAD)"
+s="+git20261027133012.${sha:0:7}"
+check "a system package is marked as one" \
+    "[{\"package\": \"gated\", \"version\": \"2.0.0$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"private/robots\", \"kind\": \"ros\"}, {\"package\": \"routed\", \"version\": \"0.4.1$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"public\", \"kind\": \"system\"}]"
 
 echo
 echo "  $pass passed, $fail failed"
