@@ -43,8 +43,8 @@ check "a package without a kind is a ROS package" '[{"package": "a"}]' '["jazzy"
     '[{"package": "a", "ros_distro": "jazzy"}, {"package": "a", "ros_distro": "kilted"}]'
 check "a system package builds once per Ubuntu release" '[{"package": "s", "kind": "system"}]' "$ALL" \
     '[{"package": "s", "kind": "system", "ros_distro": "humble"}, {"package": "s", "kind": "system", "ros_distro": "jazzy"}, {"package": "s", "kind": "system", "ros_distro": "lyrical"}]'
-check "for the first listed distro on that release" '[{"package": "s", "kind": "system"}]' '["kilted", "rolling", "jazzy"]' \
-    '[{"package": "s", "kind": "system", "ros_distro": "kilted"}, {"package": "s", "kind": "system", "ros_distro": "rolling"}]'
+check "for that release's system distro, whatever is listed" '[{"package": "s", "kind": "system"}]' '["kilted", "rolling"]' \
+    '[{"package": "s", "kind": "system", "ros_distro": "jazzy"}, {"package": "s", "kind": "system", "ros_distro": "lyrical"}]'
 check "both kinds together" '[{"package": "a", "kind": "ros"}, {"package": "s", "kind": "system"}]' '["jazzy", "kilted"]' \
     '[{"package": "a", "kind": "ros", "ros_distro": "jazzy"}, {"package": "a", "kind": "ros", "ros_distro": "kilted"}, {"package": "s", "kind": "system", "ros_distro": "jazzy"}]'
 check "nothing to build" '[]' "$ALL" '[]'

@@ -41,6 +41,8 @@ import os
 import sys
 import urllib.request
 
+from build_matrix import SYSTEM_DISTRO
+
 
 def call(url, token, body=None):
     req = urllib.request.Request(
@@ -67,10 +69,12 @@ def main():
             break
         page += 1
 
-    # Named as reusable_release_build.yml names them.
+    # Named as reusable_release_build.yml names them. A system package is built for its Ubuntu
+    # release's system distro, listed or not.
+    distros = list(dict.fromkeys(json.loads(e["DISTROS"]) + list(SYSTEM_DISTRO.values())))
     artifacts = []
     for release in json.loads(e["BUILD"]):
-        for distro in json.loads(e["DISTROS"]):
+        for distro in distros:
             for arch in ("amd64", "arm64"):
                 name = f'{release["package"]}-{release["tag"].replace("/", "-")}-{distro}-{arch}'
                 if name in built:

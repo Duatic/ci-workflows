@@ -101,7 +101,8 @@ jobs:
           build="$(python3 .checks/release/edge_packages.py)"
           [ "$build" != "[]" ] || echo "no package declares <duatic_archive_root>; nothing to build"
           echo "build=$build" >> "$GITHUB_OUTPUT"
-          echo "matrix=$(BUILD="$build" python3 .checks/release/build_matrix.py)" >> "$GITHUB_OUTPUT"
+          matrix="$(BUILD="$build" python3 .checks/release/build_matrix.py)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   # The tolerance lives in the build workflow: a job calling a reusable workflow cannot itself be
   # allowed to fail.

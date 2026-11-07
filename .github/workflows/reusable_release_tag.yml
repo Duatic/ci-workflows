@@ -177,7 +177,8 @@ jobs:
           with open(os.path.join(os.environ["RUNNER_TEMP"], "build.json"), "w") as f:
               f.write(build)
           PY
-          echo "matrix=$(BUILD="$(cat "$RUNNER_TEMP/build.json")" python3 .checks/release/build_matrix.py)" >> "$GITHUB_OUTPUT"
+          matrix="$(BUILD="$(cat "$RUNNER_TEMP/build.json")" python3 .checks/release/build_matrix.py)"
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   # The tolerance lives in the build workflow: a job calling a reusable workflow cannot itself be
   # allowed to fail.

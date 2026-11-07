@@ -308,8 +308,9 @@ Both take `runner`, `arm64_runner`, `architectures`, `publisher`, `ros_distros` 
 `private_roots`, and pass the build workflow below each package's own root.
 
 A package declaring `<duatic_package_kind>system</duatic_package_kind>` in its `<export>` needs no
-ROS and carries no distro in its name, so both build it once per Ubuntu release, for the first
-distro in `ros_distros` on that release, in plain `ubuntu:<codename>` rather than a ROS image.
+ROS and carries no distro in its name, so both build it once per Ubuntu release a distro in
+`ros_distros` is on, in plain `ubuntu:<codename>` rather than a ROS image. It is published through
+that release's system distro: humble on jammy, jazzy on noble, lyrical on resolute.
 
 ```yaml
 # .github/workflows/edge.yml

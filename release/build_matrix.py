@@ -30,8 +30,8 @@ Reads its inputs from the environment, as the release workflows set them:
     DISTROS  JSON list of the ROS distros to build for
 
 A ROS package builds once per distro. A system package carries no distro in its name, so it builds
-once per Ubuntu release, for the first listed distro on that release. Each entry is the package's
-own fields plus ros_distro.
+once per Ubuntu release any listed distro is on, for that release's system distro, the one the
+archive routes its system packages through. Each entry is the package's own fields plus ros_distro.
 """
 
 import json
@@ -46,6 +46,7 @@ UBUNTU = {
     "lyrical": "resolute",
     "rolling": "resolute",
 }
+SYSTEM_DISTRO = {"jammy": "humble", "noble": "jazzy", "resolute": "lyrical"}
 
 
 def main():
@@ -59,13 +60,11 @@ def main():
         kind = package.get("kind", "ros")
         if kind not in ("ros", "system"):
             raise SystemExit(f'{package["package"]}: kind is \'{kind}\', not ros or system')
-        taken = set()
-        for d in distros:
-            if kind == "system":
-                if UBUNTU[d] in taken:
-                    continue
-                taken.add(UBUNTU[d])
-            include.append({**package, "ros_distro": d})
+        if kind == "ros":
+            include += [{**package, "ros_distro": d} for d in distros]
+            continue
+        for u in dict.fromkeys(UBUNTU[d] for d in distros):
+            include.append({**package, "ros_distro": SYSTEM_DISTRO[u]})
     print(json.dumps(include))
     return 0
 
