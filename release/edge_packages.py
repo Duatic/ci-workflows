@@ -28,7 +28,7 @@ Every package.xml at --head that declares <duatic_archive_root> is built, at a v
 after the release it follows and before the next one:
 
     [{"package": ..., "version": "<version>+git<commit time>.<commit>", "suffix": "+git...",
-      "tag": "<commit>", "root": ...}]
+      "tag": "<commit>", "root": ..., "kind": "ros" or "system"}]
 
 The commit time is the committer time in UTC, as YYYYMMDDHHMMSS, so later commits on main sort
 later. tag is the commit the build checks out, as reusable_release_build.yml takes it.
@@ -79,6 +79,7 @@ def main():
             continue
         name = (root.findtext("name") or "").strip()
         version = (root.findtext("version") or "").strip()
+        kind = (export.findtext("duatic_package_kind") or "").strip() or "ros"
         packages.append(
             {
                 "package": name,
@@ -86,6 +87,7 @@ def main():
                 "suffix": suffix,
                 "tag": commit,
                 "root": archive_root,
+                "kind": kind,
             }
         )
         print(f"{name} {version}{suffix} -> {archive_root}", file=sys.stderr)

@@ -63,6 +63,7 @@ jobs:
     runs-on: ${{ inputs.runner }}
     outputs:
       build: ${{ steps.plan.outputs.build || '[]' }}
+      matrix: ${{ steps.plan.outputs.matrix || '[]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -91,6 +92,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DISTROS: ${{ inputs.ros_distros }}
         run: |
           if [ "$EVENT" != push ] || [ "$REF" != "refs/heads/$DEFAULT_BRANCH" ]; then
             echo "::error::edge builds come from a push to $DEFAULT_BRANCH, not a $EVENT to $REF"
@@ -99,6 +101,7 @@ jobs:
           build="$(python3 .checks/release/edge_packages.py)"
           [ "$build" != "[]" ] || echo "no package declares <duatic_archive_root>; nothing to build"
           echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "matrix=$(BUILD="$build" python3 .checks/release/build_matrix.py)" >> "$GITHUB_OUTPUT"
 
   # The tolerance lives in the build workflow: a job calling a reusable workflow cannot itself be
   # allowed to fail.
@@ -108,20 +111,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: ${{ fromJSON(needs.plan.outputs.build) }}
-        ros_distro: ${{ fromJSON(inputs.ros_distros) }}
+        include: ${{ fromJSON(needs.plan.outputs.matrix) }}
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v2
     secrets: inherit
     with:
-      tag: ${{ matrix.package.tag }}
-      package: ${{ matrix.package.package }}
+      tag: ${{ matrix.tag }}
+      package: ${{ matrix.package }}
       ros_distro: ${{ matrix.ros_distro }}
-      version_suffix: ${{ matrix.package.suffix }}
+      version_suffix: ${{ matrix.suffix }}
       archive_channels: edge stable
       runner: ${{ inputs.runner }}
       arm64_runner: ${{ inputs.arm64_runner }}
       architectures: ${{ inputs.architectures }}
-      root: ${{ matrix.package.root }}
+      root: ${{ matrix.root }}
       private_roots: ${{ inputs.private_roots }}
       continue_on_failure: true
 

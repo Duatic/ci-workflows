@@ -63,7 +63,7 @@ on:
         type: string
     outputs:
       released:
-        description: 'JSON list of {package, version, tag, root} it tagged; [] when the pull request released nothing'
+        description: 'JSON list of {package, version, tag, root, kind} it tagged; [] when the pull request released nothing'
         value: ${{ jobs.tag.outputs.released }}
 
 permissions:
@@ -75,6 +75,7 @@ jobs:
     outputs:
       released: ${{ steps.tag.outputs.released || '[]' }}
       build: ${{ steps.tag.outputs.build || '[]' }}
+      matrix: ${{ steps.tag.outputs.matrix || '[]' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -119,6 +120,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ github.event.pull_request.merge_commit_sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
+          DISTROS: ${{ inputs.ros_distros }}
         run: |
           # A bare-version title belongs to reusable_repo_release_tag.yml, not this workflow.
           if printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$'; then
@@ -162,14 +164,20 @@ jobs:
           for name, version, pkg_dir in (line.split() for line in open(sys.argv[1]) if line.strip()):
               export = ET.parse(os.path.join(pkg_dir, "package.xml")).getroot().find("export")
               root = (export.findtext("duatic_archive_root") or "").strip() if export is not None else ""
-              released.append({"package": name, "version": version, "tag": f"{name}/{version}", "root": root})
+              kind = ((export.findtext("duatic_package_kind") or "").strip() if export is not None else "") or "ros"
+              released.append({"package": name, "version": version, "tag": f"{name}/{version}", "root": root,
+                               "kind": kind})
               if not root:
                   print(f"::warning::{name} {version} was released but not built: it declares no "
                         "<duatic_archive_root>, so it cannot reach the apt archive")
+          build = json.dumps([r for r in released if r["root"]])
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
               out.write("released=" + json.dumps(released) + "\n")
-              out.write("build=" + json.dumps([r for r in released if r["root"]]) + "\n")
+              out.write("build=" + build + "\n")
+          with open(os.path.join(os.environ["RUNNER_TEMP"], "build.json"), "w") as f:
+              f.write(build)
           PY
+          echo "matrix=$(BUILD="$(cat "$RUNNER_TEMP/build.json")" python3 .checks/release/build_matrix.py)" >> "$GITHUB_OUTPUT"
 
   # The tolerance lives in the build workflow: a job calling a reusable workflow cannot itself be
   # allowed to fail.
@@ -181,18 +189,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        release: ${{ fromJSON(needs.tag.outputs.build) }}
-        ros_distro: ${{ fromJSON(inputs.ros_distros) }}
+        include: ${{ fromJSON(needs.tag.outputs.matrix) }}
     uses: Duatic/ci-workflows/.github/workflows/reusable_release_build.yml@v2
     secrets: inherit
     with:
-      tag: ${{ matrix.release.tag }}
-      package: ${{ matrix.release.package }}
+      tag: ${{ matrix.tag }}
+      package: ${{ matrix.package }}
       ros_distro: ${{ matrix.ros_distro }}
       runner: ${{ inputs.runner }}
       arm64_runner: ${{ inputs.arm64_runner }}
       architectures: ${{ inputs.architectures }}
-      root: ${{ matrix.release.root }}
+      root: ${{ matrix.root }}
       private_roots: ${{ inputs.private_roots }}
       continue_on_failure: true
 
