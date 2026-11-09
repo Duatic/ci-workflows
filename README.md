@@ -181,8 +181,11 @@ and badges of private repos stay private.
 After the first run on the default branch has created the branch, point README badges at it:
 
 ```markdown
-[![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions/workflows/ci.yml)
+[![Jazzy](https://github.com/<org>/<repo-name>/raw/badges/jazzy.svg)](https://github.com/<org>/<repo-name>/actions?query=branch%3Amain)
 ```
+
+The link lists every workflow's runs on the default branch, because both the CI workflow and the
+nightly orchestrator write the badges.
 
 Badges are only written for runs on the default branch. A run that builds a single distro updates only that
 distro's badge. The build and pre-commit jobs run with `contents: read`; only the badges job uses
