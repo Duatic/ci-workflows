@@ -51,6 +51,7 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 |---|---|---|---|
 | `ros_distro` | no | `all` | `all` runs the full gated matrix (jazzy, then kilted/lyrical/rolling once jazzy succeeds); a single distro name (e.g. `kilted`) builds only that one. |
 | `extra_distros` | no | `''` | Opt-in: comma-separated distros added to the secondary distros of the `all` matrix, e.g. `humble` for repos that still support it. |
+| `gated` | no | `true` | Run the secondary distros only once jazzy succeeded on the same architecture. `false` runs every distro at once, as the nightly orchestrator does. |
 | `architectures` | no | `'["amd64","arm64"]'` | JSON list of the architectures every distro builds and tests on, each natively on its own runner and ci image. Private repositories without a self-hosted arm64 runner pass `'["amd64"]'`: hosted minutes are billed for them. |
 | `runner` | no | `ubuntu-latest` | Runner label(s) for the amd64 legs and every other job, e.g. `self-hosted`. |
 | `runner_arm64` | no | `ubuntu-24.04-arm` | Runner label(s) for the arm64 legs. |
@@ -125,9 +126,9 @@ jobs:
 
 ## Example: product repo with nightly images
 
-`reusable_nightly_orchestrator.yml` runs `ci_orchestrator.yml` over the full matrix with status badges,
-then the image factory's `reusable_nightly_image.yml`. The images build after CI whatever its
-result, so they reuse the day's ci images instead of building them again; a dev image falls back
+`reusable_nightly_orchestrator.yml` runs `ci_orchestrator.yml` over the full, ungated matrix with
+status badges, then the image factory's `reusable_nightly_image.yml`. The images build after CI
+whatever its result, so they reuse the day's ci images instead of building them again; a dev image falls back
 to a lean one when the workspace does not compile.
 
 | Input | Required | Default | Description |
