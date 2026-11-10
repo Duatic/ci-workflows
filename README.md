@@ -307,7 +307,12 @@ declares `<duatic_archive_root>`, like the tag workflow, at `<version>+git<commi
 before the next one. For a squash- or merge-committed
 main, that is the order commits landed in. What built is handed to the publisher for the archive's `edge` channel, which
 keeps the newest builds of each package. `nightly` is not built: once a day the publisher switches
-it to what `edge` publishes. It takes the same inputs as the tag workflow and needs
+it to what `edge` publishes. When nothing outside `.github/` changed since the last successful run of the edge workflow on
+the default branch, and no changed workflow calls `reusable_edge_build.yml`, nothing is built: such
+a push changes no package. A change to the calling workflow counts. Every other push builds every
+package, and so does `all_packages: true`. The release App reads the earlier runs; without it,
+every package is built. A skipped push retries nothing: a package whose build failed in a run that
+still succeeded is built again by the next push that changes more than `.github/`. It takes the same inputs as the tag workflow and needs
 `secrets: inherit` the same way.
 
 Both take `runner`, `arm64_runner`, `architectures`, `publisher`, `ros_distros` and

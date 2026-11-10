@@ -33,7 +33,13 @@ after the release it follows and before the next one:
 The commit time is the committer time in UTC, as YYYYMMDDHHMMSS, so later commits on main sort
 later. tag is the commit the build checks out, as reusable_release_build.yml takes it.
 
-Usage:  edge_packages.py [--head REF]
+With --base, the commit the last successful build of main ran for, nothing is built when the range
+--base..--head changes only files under .github/ and none of the workflows it changes calls
+reusable_edge_build.yml: such a push changes no package. Any other change builds every package.
+
+--caller names the workflow file calling the edge build, whose changes count as a change too.
+
+Usage:  edge_packages.py [--head REF] [--base REF [--caller PATH]]
 """
 
 import argparse
@@ -53,12 +59,34 @@ def git(*args):
     return r.stdout
 
 
+def changes_packages(base, head, caller=""):
+    """Whether base..head can change a package: anything outside .github/, the calling workflow,
+    or a workflow that calls the edge build, whose inputs decide what is built."""
+    paths = [
+        p for p in git("diff", "--no-renames", "--name-only", "-z", base, head).split("\0") if p
+    ]
+    for p in paths:
+        if not p.startswith(".github/") or p == caller:
+            return True
+        if p.startswith(".github/workflows/"):
+            r = subprocess.run(["git", "show", f"{head}:{p}"], capture_output=True, text=True)
+            if "reusable_edge_build.yml" in r.stdout:
+                return True
+    return False
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--head", default="HEAD")
+    ap.add_argument("--base")
+    ap.add_argument("--caller", default="")
     args = ap.parse_args()
 
     commit = git("rev-parse", f"{args.head}^{{commit}}").strip()
+    if args.base and not changes_packages(args.base, commit, args.caller):
+        print(f"only .github/ changed since {args.base[:7]}; nothing to build", file=sys.stderr)
+        print("[]")
+        return 0
     stamp = git("show", "-s", "--format=%cd", "--date=format-local:%Y%m%d%H%M%S", commit).strip()
     suffix = f"+git{stamp}.{commit[:7]}"
 
