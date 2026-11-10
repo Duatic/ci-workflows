@@ -101,9 +101,11 @@ jobs:
         run: |
           if [ "$ALL" != true ] && [ -n "$APP_ID" ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; fi
 
+      # A token that cannot be minted builds every package; it never stops the build.
       - uses: actions/create-github-app-token@v2
         if: steps.app.outputs.ok == 'true'
         id: runs
+        continue-on-error: true
         with:
           app-id: ${{ secrets.RELEASE_APP_ID }}
           private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
@@ -120,6 +122,7 @@ jobs:
           DISTROS: ${{ inputs.ros_distros }}
           ALL: ${{ inputs.all_packages }}
           GH_TOKEN: ${{ steps.runs.outputs.token }}
+          MINTED: ${{ steps.runs.outcome }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
           CALLER: ${{ github.workflow_ref }}
@@ -134,14 +137,19 @@ jobs:
           wf="${CALLER#*/.github/workflows/}"; wf="${wf%%@*}"
           if [ "$ALL" = true ]; then
             echo "all_packages: building every package"
+          elif [ "$MINTED" = failure ]; then
+            echo "::warning::cannot mint the release App token to read earlier runs; building every package"
           elif [ -z "$GH_TOKEN" ]; then
             echo "::notice::RELEASE_APP_ID does not reach this workflow, so earlier runs cannot be read; building every package"
           elif ! runs="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
               "$API/repos/$REPO/actions/workflows/$wf/runs?branch=$DEFAULT_BRANCH&event=push&status=success&per_page=1")"; then
             echo "::warning::cannot read the runs of $wf; building every package"
           else
-            last="$(printf '%s' "$runs" | python3 -c 'import json, sys; r = json.load(sys.stdin)["workflow_runs"]; print(r[0]["head_sha"] if r else "")')"
-            if [ -z "$last" ]; then
+            last="$(printf '%s' "$runs" | python3 -c 'import json, sys; r = json.load(sys.stdin)["workflow_runs"]; print(r[0]["head_sha"] if r else "")')" \
+              || { echo "::warning::cannot read the runs of $wf from the API's answer; building every package"; last=""; runs=""; }
+            if [ -z "$runs" ]; then
+              :
+            elif [ -z "$last" ]; then
               echo "::notice::no earlier successful run of $wf; building every package"
             elif ! git fetch -q --depth=1 origin "$last"; then
               echo "::warning::cannot fetch $last, the last successful run's commit; building every package"
