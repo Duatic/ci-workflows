@@ -278,10 +278,11 @@ jobs:
   badges:
     name: Publish status badges
     needs: [prepare, tested, primary-amd64, primary-arm64, secondary-amd64, secondary-arm64]
-    if: ${{ always() && needs.prepare.outputs.build == 'true' && needs.tested.outputs.tested != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    if: ${{ always() && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts
+        if: ${{ needs.tested.outputs.tested != 'true' }}
         uses: actions/download-artifact@v4
         with:
           pattern: badge-*
@@ -289,9 +290,11 @@ jobs:
           merge-multiple: true
 
       # One badge per distro over its architectures: failing when any leg failed, otherwise
-      # cancelled or not run when any leg was, otherwise passing.
+      # cancelled or not run when any leg was, otherwise passing. An already tested tree passed
+      # every leg in the run that tested it.
       - name: Combine each distro's legs, filling legs that did not run
         env:
+          TESTED: ${{ needs.tested.outputs.tested }}
           PRIMARY: ${{ needs.prepare.outputs.primary }}
           SECONDARY: ${{ needs.prepare.outputs.secondary }}
           ARCHITECTURES: ${{ inputs.architectures }}
@@ -303,7 +306,11 @@ jobs:
             '($p + $s)[] as $d | $a[] | "\($d) \(.)"')
           while read -r d a; do
             f="badges/${REPO}-${d}-${a}.json"
-            [ -f "$f" ] || printf '{"label":"%s","message":"not run","color":"lightgrey"}\n' "$d" > "$f"
+            if [ "$TESTED" = true ]; then
+              printf '{"label":"%s","message":"passing","color":"brightgreen"}\n' "$d" > "$f"
+            elif [ ! -f "$f" ]; then
+              printf '{"label":"%s","message":"not run","color":"lightgrey"}\n' "$d" > "$f"
+            fi
           done <<<"$legs"
           while read -r d; do
             jq -s '{schemaVersion: 1, label: .[0].label} + (
