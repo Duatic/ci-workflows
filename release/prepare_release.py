@@ -86,6 +86,12 @@ REPO_TAG = re.compile(r"^v(\d+\.\d+\.\d+)$")
 CHANGELOG_HEADER = "^^^^^^^^^\nChangelog\n^^^^^^^^^\n"
 
 
+def package_header(name):
+    """The title a package's new CHANGELOG.rst starts with, as catkin_generate_changelog writes it."""
+    title = f"Changelog for package {name}"
+    return f"{'^' * len(title)}\n{title}\n{'^' * len(title)}\n"
+
+
 def git(*args, allow_fail=False):
     r = subprocess.run(["git", *args], capture_output=True, text=True)
     if r.returncode and not allow_fail:
@@ -313,7 +319,7 @@ def gather(name, pkg_dir, pkg_xml, old):
         ).split()
 
     changelog = pkg_dir / "CHANGELOG.rst"
-    text = changelog.read_text() if changelog.exists() else ""
+    text = changelog.read_text() if changelog.exists() else package_header(name)
     pending, stray, text = split_pending(text)
 
     return {

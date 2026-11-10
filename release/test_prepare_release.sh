@@ -146,7 +146,7 @@ check 0 "chore, ci, test, feat and an unprefixed subject" --package pkg_a
 expect "feat kept" 1 '^\* feat: d$' pkg_a/CHANGELOG.rst
 expect "unprefixed kept" 1 '^\* just a message$' pkg_a/CHANGELOG.rst
 expect "chore, ci, test dropped" 0 '^\* \(chore\|ci\|test\): ' pkg_a/CHANGELOG.rst
-line "feat before the unprefixed one" 3 "* feat: d" pkg_a/CHANGELOG.rst
+line "feat before the unprefixed one" 7 "* feat: d" pkg_a/CHANGELOG.rst
 release_commit pkg_a 3.1.0
 
 echo "=== a sibling package's commits stay out ==="
@@ -173,7 +173,7 @@ check 0 "pending section present" --package pkg_a
 expect "its bullet moved into the release" 1 '^\* old pending note$' pkg_a/CHANGELOG.rst
 expect "the docs commit is there too" 1 '^\* docs: stage a note$' pkg_a/CHANGELOG.rst
 expect "no pending section remains" 0 '^Upcoming changes$' pkg_a/CHANGELOG.rst
-line "the hand-written bullet leads the section" 3 "* old pending note" pkg_a/CHANGELOG.rst
+line "the hand-written bullet leads the section" 7 "* old pending note" pkg_a/CHANGELOG.rst
 release_commit pkg_a 3.2.1
 
 echo "=== refusals leave the tree untouched ==="
@@ -204,6 +204,9 @@ pkg pkg_c 0.1.0
 git add -A && git commit -qm "feat: add pkg_c"
 check 0 "pkg_c, one commit in its history" --package pkg_c
 expect "changelog created" 1 '^\* feat: add pkg_c$' pkg_c/CHANGELOG.rst
+line "with the package's title" 2 "Changelog for package pkg_c" pkg_c/CHANGELOG.rst
+line "  underlined to its length" 1 "^^^^^^^^^^^^^^^^^^^^^^^^^^^" pkg_c/CHANGELOG.rst
+line "  and a blank line before the first section" 4 "" pkg_c/CHANGELOG.rst
 expect "0.2.0" 1 '<version>0.2.0</version>' pkg_c/package.xml
 release_commit pkg_c 0.2.0
 
