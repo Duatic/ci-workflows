@@ -11,6 +11,7 @@ name: CI orchestrator
 #   - a push or pull request that changes only files matching paths_ignore (docs by default)
 #     skips the build and test legs; they report as skipped, which passes required checks
 #   - a scheduled run deletes the repository's ci images built before today, which no run reuses
+#   - a push to the default branch does not build a tree that already passed in the last 24 hours
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
 # optionally a single distro to build via workflow_dispatch. A repository that publishes nightly
@@ -140,12 +141,50 @@ jobs:
           echo "primary=${primary}" >> "$GITHUB_OUTPUT"
           echo "secondary=${secondary}" >> "$GITHUB_OUTPUT"
 
+  # No permissions block: it takes the caller's token, so a caller without actions: read and
+  # pull-requests: read still starts, and the lookup fails over to building.
+  tested:
+    name: Look for an already tested tree
+    needs: prepare
+    if: ${{ needs.prepare.outputs.build == 'true' && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    runs-on: ${{ inputs.runner }}
+    outputs:
+      tested: ${{ steps.tested.outputs.tested }}
+    steps:
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Look for a run that already tested this tree
+        id: tested
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PRIMARY: ${{ needs.prepare.outputs.primary }}
+          SECONDARY: ${{ needs.prepare.outputs.secondary }}
+          ARCHITECTURES: ${{ inputs.architectures }}
+        run: echo "tested=$(python3 .checks/ci/tested_tree.py)" >> "$GITHUB_OUTPUT"
+
   # One primary and one secondary job per architecture, so a secondary leg waits only on the
   # primary leg of its own architecture. arch stays a matrix axis to keep the check names.
   primary-amd64:
     name: primary
-    needs: prepare
-    if: ${{ needs.prepare.outputs.build == 'true' && contains(fromJSON(inputs.architectures), 'amd64') }}
+    needs: [prepare, tested]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.build == 'true' && needs.tested.outputs.tested != 'true' && contains(fromJSON(inputs.architectures), 'amd64') }}
     strategy:
       fail-fast: false
       matrix:
@@ -164,8 +203,8 @@ jobs:
 
   primary-arm64:
     name: primary
-    needs: prepare
-    if: ${{ needs.prepare.outputs.build == 'true' && contains(fromJSON(inputs.architectures), 'arm64') }}
+    needs: [prepare, tested]
+    if: ${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.build == 'true' && needs.tested.outputs.tested != 'true' && contains(fromJSON(inputs.architectures), 'arm64') }}
     strategy:
       fail-fast: false
       matrix:
@@ -181,7 +220,7 @@ jobs:
   secondary-amd64:
     name: secondary
     needs: [prepare, primary-amd64]
-    if: ${{ needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    if: ${{ !cancelled() && needs.primary-amd64.result == 'success' && needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     strategy:
       fail-fast: false
       matrix:
@@ -197,7 +236,7 @@ jobs:
   secondary-arm64:
     name: secondary
     needs: [prepare, primary-arm64]
-    if: ${{ needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
+    if: ${{ !cancelled() && needs.primary-arm64.result == 'success' && needs.prepare.outputs.secondary != '[]' && !(github.event_name == 'pull_request' && github.event.pull_request.draft) }}
     strategy:
       fail-fast: false
       matrix:
@@ -238,8 +277,8 @@ jobs:
   # Coalesces every leg's badge artifact into a single badges branch commit.
   badges:
     name: Publish status badges
-    needs: [prepare, primary-amd64, primary-arm64, secondary-amd64, secondary-arm64]
-    if: ${{ always() && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    needs: [prepare, tested, primary-amd64, primary-arm64, secondary-amd64, secondary-arm64]
+    if: ${{ always() && needs.prepare.outputs.build == 'true' && needs.tested.outputs.tested != 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
       - name: Download badge artifacts

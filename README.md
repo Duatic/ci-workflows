@@ -73,6 +73,7 @@ What's **not** an input, because it's derived or auto-detected rather than repo-
   image lists unresolved dependencies, the same gate the robot image holds.
 - **Architectures** - each distro builds and tests once per architecture in `architectures`, on that architecture's runner and ci image; its badge passes only when every architecture passed.
 - **Draft PRs** - the full matrix is too expensive to run on drafts. On a draft PR the orchestrator builds only the primary distro (jazzy, or the single `ros_distro` chosen) and skips the secondary distros and pre-commit. Marking the PR "Ready for review" runs the full matrix.
+- **Already tested trees** - a push to the default branch does not build its tree again when a run of the same workflow on that tree, within the last 24 hours, passed every distro and architecture this push would build and failed no job, either on the pushed commit or on the head of the pull request it merged. A pull request merged while up to date with the default branch has the same tree as its head. Otherwise, or when the lookup fails, the push builds. Pre-commit still runs. The lookup needs `actions: read` and `pull-requests: read`; a caller that sets `permissions` must grant both.
 
 ## Example: library repo, no private deps
 
@@ -533,5 +534,6 @@ remains callable for repositories not yet moved to these.
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos grant `packages: write` to the CI job, which pushes each distro's ci image to ghcr.io for the test job to pull. A pull request from a fork cannot push it, so its CI fails unless a ci image with the same key is already published.
 - Repos keep a schedule, on `ci_orchestrator.yml` or `reusable_nightly_orchestrator.yml`: a scheduled run deletes the repo's ci images built before today, and nothing else does.
+- Repos whose CI workflow sets `permissions` must grant `actions: read` and `pull-requests: read`, or every push to the default branch builds.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.
