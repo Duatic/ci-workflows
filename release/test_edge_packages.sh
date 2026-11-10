@@ -75,6 +75,34 @@ s="+git20261027133012.${sha:0:7}"
 check "a system package is marked as one" \
     "[{\"package\": \"gated\", \"version\": \"2.0.0$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"private/robots\", \"kind\": \"ros\"}, {\"package\": \"routed\", \"version\": \"0.4.1$s\", \"suffix\": \"$s\", \"tag\": \"$sha\", \"root\": \"public\", \"kind\": \"system\"}]"
 
+# count <label> <expected number of packages> <args...>
+count() {
+    local label="$1" want="$2" got; shift 2
+    got=$( cd "$WORK" && python3 "$TOOL" "$@" 2>/dev/null | python3 -c 'import json, sys; print(len(json.load(sys.stdin)))' )
+    if [ "$got" = "$want" ]; then printf '  PASS  %-56s\n' "$label"; pass=$((pass+1))
+    else printf '  FAIL  %-56s\n' "$label"; fail=$((fail+1)); printf '          want: %s  got: %s\n' "$want" "$got"; fi
+}
+
+base="$(git rev-parse HEAD)"
+mkdir -p .github/workflows && echo "on: push" > .github/workflows/ci.yml
+git add -A && commit "2026-10-28T10:00:00+01:00" "ci: a workflow"
+count "a change only under .github/ builds nothing" 0 --base "$base"
+count "without --base every routed package builds" 2
+
+printf 'jobs:\n  edge:\n    uses: o/ci-workflows/.github/workflows/reusable_edge_build.yml@v2\n' > .github/workflows/edge.yml
+git add -A && commit "2026-10-28T10:00:00+01:00" "ci: build edge"
+count "a change to the workflow calling the edge build builds all" 2 --base "$base"
+
+base="$(git rev-parse HEAD)"
+echo "// x" > nested/routed/a.cpp
+git add -A && commit "2026-10-28T10:00:00+01:00" "fix: routed"
+count "any other change builds every package" 2 --base "$base"
+
+base="$(git rev-parse HEAD)"
+mkdir -p "dir with space" && echo x > "dir with space/f"
+git add -A && commit "2026-10-28T10:00:00+01:00" "chore: a path with a space"
+count "  a path with a space outside every package too" 2 --base "$base"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
