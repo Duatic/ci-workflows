@@ -53,3 +53,5 @@ jobs:
         run: release/test_build_matrix.sh
       - name: Tested tree suite
         run: ci/test_tested_tree.sh
+      - name: Version-only change suite
+        run: ci/test_version_only.sh
