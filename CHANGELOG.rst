@@ -2,6 +2,11 @@
 Changelog
 ^^^^^^^^^
 
+2.5.0 (2026-11-10)
+------------------
+* feat(ci): prune ci images on scheduled runs (#72)
+* feat(nightly): run every distro ungated in the nightly orchestrator (#70)
+
 2.4.0 (2026-11-07)
 ------------------
 * feat(release): build system packages once per Ubuntu release (#68)
