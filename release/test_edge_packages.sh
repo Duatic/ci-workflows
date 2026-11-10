@@ -94,6 +94,12 @@ git add -A && commit "2026-10-28T10:00:00+01:00" "ci: build edge"
 count "a change to the workflow calling the edge build builds all" 2 --base "$base"
 
 base="$(git rev-parse HEAD)"
+printf 'jobs:\n  edge:\n    uses: ./.github/workflows/wrapper.yml\n' > .github/workflows/edge-caller.yml
+git add -A && commit "2026-10-28T10:00:00+01:00" "ci: a caller through a wrapper"
+count "a change to the calling workflow builds all" 2 --base "$base" --caller .github/workflows/edge-caller.yml
+count "  but not when it is not the caller" 0 --base "$base" --caller .github/workflows/edge.yml
+
+base="$(git rev-parse HEAD)"
 echo "// x" > nested/routed/a.cpp
 git add -A && commit "2026-10-28T10:00:00+01:00" "fix: routed"
 count "any other change builds every package" 2 --base "$base"
