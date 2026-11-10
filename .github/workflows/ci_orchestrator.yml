@@ -5,7 +5,7 @@ name: CI orchestrator
 # Owns everything that shouldn't be re-decided per repo:
 #   - the distro x architecture matrix, each leg built and tested natively on the image
 #     factory's ci image for its architecture (amd64 and arm64 unless `architectures` says less)
-#   - gating: the primary distro (jazzy) must succeed before the rest run
+#   - gating: the primary distro (jazzy) must succeed before the rest run, unless `gated` is false
 #   - auto-cancelling a superseded run on the same ref
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #   - a push or pull request that changes only files matching paths_ignore (docs by default)
@@ -29,6 +29,11 @@ on:
         default: ''
         required: false
         type: string
+      gated:
+        description: 'Run the secondary distros only once the primary distro succeeded. false runs every distro at once.'
+        default: true
+        required: false
+        type: boolean
       architectures:
         description: 'JSON list of the architectures to build and test each distro on, of amd64 and arm64.'
         default: '["amd64","arm64"]'
@@ -111,6 +116,7 @@ jobs:
           SEL_DISTRO: ${{ inputs.ros_distro }}
           EXTRA_DISTROS: ${{ inputs.extra_distros }}
           ARCHITECTURES: ${{ inputs.architectures }}
+          GATED: ${{ inputs.gated }}
         run: |
           # Each architecture has its own jobs below, so any other value would silently build nothing.
           jq -e 'length > 0 and all(.[]; . == "amd64" or . == "arm64")' <<<"$ARCHITECTURES" >/dev/null ||
@@ -123,6 +129,11 @@ jobs:
             secondary="[${extra}$(entry kilted),$(entry lyrical),$(entry rolling)]"
           else
             primary="[$(entry "$SEL_DISTRO")]"
+            secondary="[]"
+          fi
+          # Ungated, every distro is a primary leg, so none waits on another.
+          if [ "$GATED" = "false" ]; then
+            primary=$(jq -c --argjson s "$secondary" '. + $s' <<<"$primary")
             secondary="[]"
           fi
           echo "primary=${primary}" >> "$GITHUB_OUTPUT"
