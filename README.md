@@ -532,5 +532,6 @@ remains callable for repositories not yet moved to these.
 ## Requirements on consumer repos
 - Repos using a private-dependency PAT must have a secret available (repo or org level) and pass `secrets: inherit`.
 - Repos grant `packages: write` to the CI job, which pushes each distro's ci image to ghcr.io for the test job to pull. A pull request from a fork cannot push it, so its CI fails unless a ci image with the same key is already published.
+- Repos keep a schedule, on `ci_orchestrator.yml` or `reusable_nightly_orchestrator.yml`: a scheduled run deletes the repo's ci images built before today, and nothing else does.
 - Repos opting into `claude_review.yml` must have their own `CLAUDE_CODE_OAUTH_TOKEN` (or `ANTHROPIC_API_KEY`) repo secret and pass `secrets: inherit`.
 - Repos releasing through a prepare workflow must have the release App's `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` available and pass `secrets: inherit`. A repository that organization secrets do not reach holds them as repository secrets.
