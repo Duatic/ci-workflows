@@ -2,6 +2,12 @@
 Changelog
 ^^^^^^^^^
 
+2.6.0 (2026-11-10)
+------------------
+* feat(ci): skip building a change to nothing but changelogs and package versions (#50)
+* feat(ci): skip building a pushed tree that already passed in the last day (#49)
+* fix(release): give a package's new changelog its title (#74)
+
 2.5.0 (2026-11-10)
 ------------------
 * feat(ci): prune ci images on scheduled runs (#72)
