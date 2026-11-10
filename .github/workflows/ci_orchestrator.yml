@@ -10,6 +10,7 @@ name: CI orchestrator
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #   - a push or pull request that changes only files matching paths_ignore (docs by default)
 #     skips the build and test legs; they report as skipped, which passes required checks
+#   - so does one that changes nothing but changelogs and package versions, as a release does
 #   - a scheduled run deletes the repository's ci images built before today, which no run reuses
 #   - a push to the default branch does not build a tree that already passed in the last 24 hours
 #
@@ -81,8 +82,24 @@ jobs:
       secondary: ${{ steps.plan.outputs.secondary }}
       build: ${{ steps.changes.outputs.build }}
     steps:
-      # Builds unless the event's changed files are all ignored. Schedules, manual runs, a
-      # first push and a comparison that may be truncated (300 files) always build.
+      - name: Resolve this workflow's own revision
+        id: self
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || { echo "::error::job.workflow_ref is empty"; exit 1; }
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .checks
+          sparse-checkout: ci
+
+      # Builds unless every changed file is a version or changelog change, or ignored. Schedules,
+      # manual runs, a first push and a comparison that may be truncated (300 files) always build.
       - id: changes
         env:
           GH_TOKEN: ${{ github.token }}
@@ -95,7 +112,7 @@ jobs:
           if [[ "$GITHUB_EVENT_NAME" =~ ^(push|pull_request)$ && -n "$BASE" && ! "$BASE" =~ ^0+$ ]] &&
             files=$(curl -fsSL -H "Authorization: Bearer ${GH_TOKEN}" \
               "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/compare/${BASE}...${HEAD}" |
-              jq -r 'if (.files | length) < 300 then .files[].filename else error("truncated") end'); then
+              jq -r -f .checks/ci/version_only.jq); then
             build=false
             set -f
             IFS=, read -r -a patterns <<<"$PATHS_IGNORE"
