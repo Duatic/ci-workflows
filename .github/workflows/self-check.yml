@@ -1,7 +1,8 @@
 name: Self-check
 # Runs pre-commit against this repo's own files (workflow YAML, docs), dogfooding the
 # pre-commit.yml leaf workflow that every consumer repo gets via ci_orchestrator.yml, runs the
-# suite for the release checks in release/, and runs the title check on this repo's pull requests.
+# suites for the release checks in release/ and the transient failure retry in retry/, and runs
+# the title check on this repo's pull requests.
 
 on:
   pull_request:
@@ -50,3 +51,11 @@ jobs:
         run: release/test_edge_packages.sh
       - name: Build matrix suite
         run: release/test_build_matrix.sh
+
+  retry-checks:
+    name: retry checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Transient failure signatures suite
+        run: retry/test_retry_transient.sh

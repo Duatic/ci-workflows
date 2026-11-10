@@ -58,6 +58,9 @@ on:
       CI_PAT:
         description: 'Optional PAT used to clone private upstream dependencies listed in a repos.list workspace file.'
         required: false
+      CI_RETRY_TOKEN:
+        description: 'Optional token that reads this run''s job logs, to keep the badges when retry_transient.yml will retry the run.'
+        required: false
 
 concurrency:
   group: ${{ github.repository }}-${{ github.workflow }}-${{ github.ref }}
@@ -215,6 +218,61 @@ jobs:
     if: ${{ always() && needs.prepare.outputs.build == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
     runs-on: ${{ inputs.runner }}
     steps:
+      # A scheduled run's first attempt whose build legs failed on a transient cause keeps the
+      # published badges: retry_transient.yml reruns those legs, and this job publishes with them.
+      # Each step below publishes the badges rather than fail when it cannot decide.
+      - name: Resolve this workflow's own revision
+        id: self
+        if: ${{ github.event_name == 'schedule' && github.run_attempt == '1' && contains(needs.*.result, 'failure') }}
+        env:
+          WORKFLOW_REF: ${{ job.workflow_ref }}
+        run: |
+          [ -n "$WORKFLOW_REF" ] || exit 0
+          echo "repo=${WORKFLOW_REF%%/.github/*}" >> "$GITHUB_OUTPUT"
+          echo "ref=${WORKFLOW_REF#*@}" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v7
+        id: retry_checkout
+        if: ${{ steps.self.outputs.ref != '' }}
+        continue-on-error: true
+        with:
+          repository: ${{ steps.self.outputs.repo }}
+          ref: ${{ steps.self.outputs.ref }}
+          path: .ci-workflows
+          sparse-checkout: retry
+
+      - uses: actions/setup-python@v5
+        id: retry_python
+        if: ${{ steps.retry_checkout.outcome == 'success' }}
+        continue-on-error: true
+        with:
+          python-version: '3.12'
+
+      # Without the token nothing retries the run, so the badges publish.
+      - name: Keep the badges for a retry of a transient failure
+        id: hold
+        if: ${{ steps.retry_python.outcome == 'success' }}
+        env:
+          TOKEN: ${{ secrets.CI_RETRY_TOKEN }}
+        run: |
+          set -uo pipefail
+          [ -n "$TOKEN" ] || exit 0
+          api="${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/actions"
+          # Only build legs: a rerun of anything else, such as pre-commit, does not rerun this job.
+          legs=$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${api}/runs/${GITHUB_RUN_ID}/jobs?per_page=100" |
+            jq -r '.jobs[] | select(.conclusion == "failure" and (.name | test("(^|/ )(primary|secondary) [(]"))) | "\(.id)\t\(.name)"') ||
+            { echo "::warning::Could not list this run's jobs, publishing the badges."; exit 0; }
+          while IFS=$'\t' read -r id name; do
+            [ -n "$id" ] || continue
+            cause=$(curl -fsSL -H "Authorization: Bearer ${TOKEN}" "${api}/jobs/${id}/logs" |
+              python3 .ci-workflows/retry/retry_transient.py --classify /dev/stdin) || continue
+            if [ -n "$cause" ]; then
+              echo "::notice::Badges kept for the retry: ${cause} in ${name}"
+              echo "hold=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          done <<<"$legs"
+
       - name: Download badge artifacts
         uses: actions/download-artifact@v4
         with:
@@ -247,6 +305,7 @@ jobs:
           done < <(cut -d' ' -f1 <<<"$legs" | sort -u)
 
       - name: Publish badges to branch
+        if: ${{ steps.hold.outputs.hold != 'true' }}
         env:
           TOKEN: ${{ github.token }}
         run: |

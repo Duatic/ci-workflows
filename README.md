@@ -60,6 +60,7 @@ same for a repository that is not itself a ROS package, versioned by its `v<vers
 | Secret | Required | Description |
 |---|---|---|
 | `CI_PAT` | no | PAT used to clone private upstream dependencies from a `repos.list` file at the repo root. Pass via `secrets: inherit`; omit entirely for public-only repos. |
+| `CI_RETRY_TOKEN` | no | Reads the run's job logs so a scheduled run that failed on a transient cause keeps its badges until the retry; see [Retrying transient failures](#retrying-transient-failures). Comes from the organisation through `secrets: inherit`. |
 
 What's **not** an input, because it's derived or auto-detected rather than repo-specific config:
 - **Dependencies** - each distro builds and tests on the repo's ci image from the
@@ -186,6 +187,33 @@ After the first run on the default branch has created the branch, point README b
 Badges are only written for runs on the default branch. A run that builds a single distro updates only that
 distro's badge. The build and pre-commit jobs run with `contents: read`; only the badges job uses
 the `contents` write permission.
+
+## Retrying transient failures
+
+`retry_transient.yml` runs in this repository every hour. It finds every scheduled run in the
+organisation that finished failed between one and three hours ago on its first attempt, and reruns
+its failed jobs when one of their logs shows a transient cause: GitHub unreachable, the Ubuntu or
+ROS package mirrors unreachable, or the build container or runner dying. The signatures are the
+`TRANSIENT` patterns in `retry/retry_transient.py`.
+
+Rerunning the failed jobs also reruns the jobs that depend on them, so the badges job publishes
+the new result. A run that fails again stays failed. Consumers need no change.
+
+A retry would only repaint a red badge the night already published, so `ci_orchestrator.yml`
+keeps the published badges when the first attempt of a scheduled run has a build leg that failed
+on a transient cause. The retry then publishes, whatever its result. A run whose legs failed for
+any other reason publishes at once. Without `CI_RETRY_TOKEN`, or when the logs cannot be read, the
+badges publish as usual.
+
+To check what a job log would be classified as:
+
+```bash
+retry/retry_transient.py --classify job.log
+```
+
+The workflow authenticates with the `CI_RETRY_TOKEN` secret, a fine-grained token or GitHub App
+token with `Actions: read and write` on the organisation's repositories. Run it by hand with
+`dry_run` to list what it would rerun.
 
 ## Claude code review
 

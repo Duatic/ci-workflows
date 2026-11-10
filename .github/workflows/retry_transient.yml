@@ -1,0 +1,31 @@
+name: Retry transient failures
+# Reruns the organisation's scheduled runs that failed on a transient cause; see retry/retry_transient.py.
+
+on:
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Only list the runs that would be rerun.'
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      # CI_RETRY_TOKEN reads and reruns Actions runs across the organisation's repositories.
+      - name: Rerun transient failures
+        env:
+          GH_TOKEN: ${{ secrets.CI_RETRY_TOKEN }}
+          ORG: ${{ github.repository_owner }}
+        run: python3 retry/retry_transient.py --org "$ORG" ${{ inputs.dry_run && '--dry-run' || '' }}
