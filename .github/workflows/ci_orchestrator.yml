@@ -10,6 +10,7 @@ name: CI orchestrator
 #   - on draft PRs only the primary distro builds, the rest of the (expensive) matrix waits for review
 #   - a push or pull request that changes only files matching paths_ignore (docs by default)
 #     skips the build and test legs; they report as skipped, which passes required checks
+#   - a scheduled run deletes the repository's ci images built before today, which no run reuses
 #
 # Consumers only choose: their schedule cron, whether they have a CI_PAT secret, and
 # optionally a single distro to build via workflow_dispatch. A repository that publishes nightly
@@ -218,6 +219,21 @@ jobs:
     with:
       runner: ${{ inputs.runner }}
       devtools_ref: ${{ inputs.devtools_ref }}
+
+  # A ci image's key holds the day it was built, so one built before today is never reused.
+  prune:
+    name: Prune ci images
+    if: ${{ github.event_name == 'schedule' }}
+    runs-on: ${{ inputs.runner }}
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Delete ci images built before today
+        uses: Duatic/duatic_ros2_docker_images/actions/prune-images@v1
+        with:
+          targets: ci
 
   # Coalesces every leg's badge artifact into a single badges branch commit.
   badges:
