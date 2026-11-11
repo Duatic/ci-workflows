@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.7.1 (2026-11-11)
+------------------
+* fix(release): fetch git-lfs when the runner lacks it (#79)
+
 2.7.0 (2026-11-11)
 ------------------
 * feat(edge): skip the edge build when a push changes only CI files (#77)
