@@ -130,6 +130,25 @@ jobs:
     outputs:
       artifact: ${{ steps.build.outputs.artifact }}
     steps:
+      # The LFS checkout below needs git-lfs, which GitHub-hosted runners have and self-hosted ones
+      # may not. Fetched into the job's temp directory, so it needs no root and leaves no trace.
+      - name: Ensure git-lfs is available
+        env:
+          VERSION: 3.8.1
+        run: |
+          command -v git-lfs >/dev/null && exit 0
+          case "$(uname -m)" in
+            x86_64) arch=amd64; sum=e72cf723a4a660438862282e8aecf3885fc8123e88bfcad534cf6b941a354b75 ;;
+            aarch64) arch=arm64; sum=67895dd77b63329796bc5efdd47b57f218e1f7b98717ebaf936a8238dbcaec0f ;;
+            *) echo "::error::unsupported architecture for git-lfs: $(uname -m)"; exit 1 ;;
+          esac
+          tarball="$RUNNER_TEMP/git-lfs.tar.gz"
+          curl -fsSL "https://github.com/git-lfs/git-lfs/releases/download/v${VERSION}/git-lfs-linux-${arch}-v${VERSION}.tar.gz" \
+            -o "$tarball"
+          echo "${sum}  ${tarball}" | sha256sum -c --quiet
+          tar xzf "$tarball" -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/git-lfs-${VERSION}" >> "$GITHUB_PATH"
+
       - uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repository || github.repository }}
