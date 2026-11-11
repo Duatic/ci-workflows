@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.7.0 (2026-11-11)
+------------------
+* feat(edge): skip the edge build when a push changes only CI files (#77)
+
 2.6.0 (2026-11-10)
 ------------------
 * feat(ci): skip building a change to nothing but changelogs and package versions (#50)
