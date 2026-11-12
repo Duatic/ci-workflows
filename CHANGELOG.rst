@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.7.2 (2026-11-12)
+------------------
+* fix(release): keep built packages for 7 days instead of 90 (#81)
+
 2.7.1 (2026-11-11)
 ------------------
 * fix(release): fetch git-lfs when the runner lacks it (#79)
