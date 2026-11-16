@@ -79,8 +79,8 @@ def is_release_bump(base, head, path):
     if name != "package.xml" or not (exists(base, path) and exists(head, path)):
         return False
     diff = git("diff", "--no-renames", "-U0", base, head, "--", path).splitlines()
-    lines = [l for l in diff if l[:1] in "+-" and not l.startswith(("+++", "---"))]
-    return all(VERSION_LINE.fullmatch(l[1:]) for l in lines)
+    lines = [line for line in diff if line[:1] in "+-" and not line.startswith(("+++", "---"))]
+    return all(VERSION_LINE.fullmatch(line[1:]) for line in lines)
 
 
 def changes_packages(base, head, caller=""):
