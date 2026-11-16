@@ -34,8 +34,10 @@ The commit time is the committer time in UTC, as YYYYMMDDHHMMSS, so later commit
 later. tag is the commit the build checks out, as reusable_release_build.yml takes it.
 
 With --base, the commit the last successful build of main ran for, nothing is built when the range
---base..--head changes only files under .github/ and none of the workflows it changes calls
-reusable_edge_build.yml: such a push changes no package. Any other change builds every package.
+--base..--head changes only files under .github/, CHANGELOG.rst files and the <version> lines of
+package.xml files, and none of the workflows it changes calls reusable_edge_build.yml: such a push
+changes no package, or only releases one, which the tag build publishes. Any other change builds
+every package.
 
 --caller names the workflow file calling the edge build, whose changes count as a change too.
 
@@ -45,6 +47,7 @@ Usage:  edge_packages.py [--head REF] [--base REF [--caller PATH]]
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import xml.etree.ElementTree as ET
@@ -59,15 +62,41 @@ def git(*args):
     return r.stdout
 
 
+VERSION_LINE = re.compile(r"\s*<version>[^<]*</version>\s*")
+
+
+def exists(ref, path):
+    r = subprocess.run(["git", "cat-file", "-e", f"{ref}:{path}"], capture_output=True)
+    return r.returncode == 0
+
+
+def is_release_bump(base, head, path):
+    """Whether path changes only as a release does: a CHANGELOG.rst kept or added, or a
+    package.xml whose only changed lines are its <version>."""
+    name = os.path.basename(path)
+    if name == "CHANGELOG.rst":
+        return exists(head, path)
+    if name != "package.xml" or not (exists(base, path) and exists(head, path)):
+        return False
+    diff = git("diff", "--no-renames", "-U0", base, head, "--", path).splitlines()
+    lines = [line for line in diff if line[:1] in "+-" and not line.startswith(("+++", "---"))]
+    return all(VERSION_LINE.fullmatch(line[1:]) for line in lines)
+
+
 def changes_packages(base, head, caller=""):
-    """Whether base..head can change a package: anything outside .github/, the calling workflow,
-    or a workflow that calls the edge build, whose inputs decide what is built."""
+    """Whether base..head can change a package: anything outside .github/ but a release's
+    changelogs and versions, the calling workflow, or a workflow that calls the edge build,
+    whose inputs decide what is built."""
     paths = [
         p for p in git("diff", "--no-renames", "--name-only", "-z", base, head).split("\0") if p
     ]
     for p in paths:
-        if not p.startswith(".github/") or p == caller:
+        if p == caller:
             return True
+        if not p.startswith(".github/"):
+            if not is_release_bump(base, head, p):
+                return True
+            continue
         if p.startswith(".github/workflows/"):
             r = subprocess.run(["git", "show", f"{head}:{p}"], capture_output=True, text=True)
             if "reusable_edge_build.yml" in r.stdout:
@@ -84,7 +113,7 @@ def main():
 
     commit = git("rev-parse", f"{args.head}^{{commit}}").strip()
     if args.base and not changes_packages(args.base, commit, args.caller):
-        print(f"only .github/ changed since {args.base[:7]}; nothing to build", file=sys.stderr)
+        print(f"no package changed since {args.base[:7]}; nothing to build", file=sys.stderr)
         print("[]")
         return 0
     stamp = git("show", "-s", "--format=%cd", "--date=format-local:%Y%m%d%H%M%S", commit).strip()

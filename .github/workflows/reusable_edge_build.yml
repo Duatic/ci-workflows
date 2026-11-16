@@ -55,7 +55,7 @@ on:
         required: false
         type: string
       all_packages:
-        description: 'Build every package, even when only .github/ changed since the last successful run'
+        description: 'Build every package, even when no package changed since the last successful run'
         default: false
         required: false
         type: boolean

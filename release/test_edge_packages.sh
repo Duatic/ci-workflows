@@ -109,6 +109,40 @@ mkdir -p "dir with space" && echo x > "dir with space/f"
 git add -A && commit "2026-10-28T10:00:00+01:00" "chore: a path with a space"
 count "  a path with a space outside every package too" 2 --base "$base"
 
+base="$(git rev-parse HEAD)"
+sed -i 's|<version>0.4.1</version>|<version>0.4.2</version>|' nested/routed/package.xml
+printf 'Changelog\n0.4.2\n-----\n* fix: x\n' > nested/routed/CHANGELOG.rst
+git add -A && commit "2026-10-28T10:00:00+01:00" "release: routed 0.4.2"
+count "a release's version and new changelog build nothing" 0 --base "$base"
+echo '* fix: y' >> nested/routed/CHANGELOG.rst
+git add -A && commit "2026-10-28T10:00:00+01:00" "docs: changelog"
+count "  nor an edited changelog" 0 --base "$base"
+count "  but a source change in the range builds every package" 2 --base "$(git rev-parse HEAD~4)"
+
+base="$(git rev-parse HEAD)"
+sed -i 's|<version>0.4.2</version>|<version>0.4.3</version>\n  <depend>rclcpp</depend>|' nested/routed/package.xml
+git add -A && commit "2026-10-28T10:00:00+01:00" "feat: a dependency"
+count "a dependency beside the version builds every package" 2 --base "$base"
+
+base="$(git rev-parse HEAD)"
+sed -i 's|<version>2.0.0</version>|<version>2.0.1</version><depend>x</depend>|' gated/package.xml
+git add -A && commit "2026-10-28T10:00:00+01:00" "feat: a dependency on the line"
+count "  and on the version's line" 2 --base "$base"
+
+base="$(git rev-parse HEAD)"
+git rm -q nested/routed/CHANGELOG.rst && commit "2026-10-28T10:00:00+01:00" "chore: drop a changelog"
+count "a deleted changelog builds every package" 2 --base "$base"
+
+base="$(git rev-parse HEAD)"
+echo x > nested/routed/CHANGELOG.md
+git add -A && commit "2026-10-28T10:00:00+01:00" "docs: another changelog"
+count "a changelog under another name builds every package" 2 --base "$base"
+
+base="$(git rev-parse HEAD)"
+pkg extra 0.1.0 public
+git add -A && commit "2026-10-28T10:00:00+01:00" "feat: a new package"
+count "a new package.xml builds every package" 3 --base "$base"
+
 echo
 echo "  $pass passed, $fail failed"
 [ "$fail" -eq 0 ]
