@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.8.0 (2026-11-16)
+------------------
+* feat(edge): skip the edge build when a push only releases a package (#83)
+
 2.7.2 (2026-11-12)
 ------------------
 * fix(release): keep built packages for 7 days instead of 90 (#81)
