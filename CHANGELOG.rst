@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.8.1 (2026-11-17)
+------------------
+* fix(badges): tolerate a failed badge upload (#85)
+
 2.8.0 (2026-11-16)
 ------------------
 * feat(edge): skip the edge build when a push only releases a package (#83)
