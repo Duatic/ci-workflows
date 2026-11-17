@@ -113,6 +113,7 @@ jobs:
 
       - name: Upload badge artifact
         if: ${{ always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: badge-${{ inputs.ros_distro }}-${{ inputs.arch }}
