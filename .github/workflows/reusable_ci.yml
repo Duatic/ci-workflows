@@ -111,8 +111,10 @@ jobs:
           printf '{"schemaVersion":1,"label":"%s","message":"%s","color":"%s"}\n' \
             "$DISTRO" "$status" "$color" > "badge/${REPO}-${DISTRO}-${ARCH}.json"
 
+      # The badge is cosmetic: a failed upload must not fail a build that passed.
       - name: Upload badge artifact
         if: ${{ always() && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: badge-${{ inputs.ros_distro }}-${{ inputs.arch }}
