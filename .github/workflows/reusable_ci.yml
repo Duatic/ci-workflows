@@ -84,7 +84,8 @@ jobs:
           mkdir -p .ccache
           # dockerd's registry-mirrors covers Docker Hub only, so the ghcr pull is routed by hand.
           # HOSTIP is set on the self-hosted runners and points at the in-cluster pull-through cache.
-          if [ -n "${HOSTIP:-}" ]; then
+          # A ci image this job built is already loaded, so only a reused one is pulled.
+          if [ -n "${HOSTIP:-}" ] && ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
             cached="$HOSTIP:31501/${IMAGE#ghcr.io/}"
             # The cache holds the manifest request open while it syncs a cold image and containerd
             # gives up after 30 s, so a header timeout means wait for the sync, not fall back. A
@@ -94,7 +95,10 @@ jobs:
             while [ "$SECONDS" -lt "$deadline" ]; do
               if out=$(docker pull "$cached" 2>&1); then pulled=true; break; fi
               case "$out" in
-                *"timeout awaiting response headers"* | *"connection refused"*) sleep 5 ;;
+                *"timeout awaiting response headers"* | *"connection refused"*)
+                  echo "Waiting for the ghcr cache to serve $cached (${out##*: })"
+                  sleep 5
+                  ;;
                 *) break ;;
               esac
             done
