@@ -89,7 +89,7 @@ jobs:
             if docker pull "$cached"; then
               docker tag "$cached" "$IMAGE"
             else
-              echo "::warning::cache unreachable at $cached, falling back to a direct ghcr.io pull"
+              echo "::warning::cache pull failed at $cached, falling back to a direct ghcr.io pull"
             fi
           fi
           # The image's entrypoint sets up the robot's ROS environment over the prebuilt stack.
