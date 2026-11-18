@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.9.0 (2026-11-18)
+------------------
+* fix(ci): build on image factory v2 (#87)
+
 2.8.1 (2026-11-17)
 ------------------
 * fix(badges): tolerate a failed badge upload (#85)
