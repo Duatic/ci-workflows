@@ -63,7 +63,7 @@ jobs:
     permissions:
       contents: write   # image-badges branch
       packages: write
-    uses: Duatic/duatic_ros2_docker_images/.github/workflows/reusable_nightly_image.yml@v1
+    uses: Duatic/duatic_ros2_docker_images/.github/workflows/reusable_nightly_image.yml@v2
     with:
       # The image factory's default set, as in ci_orchestrator.yml, plus the extra distros.
       ros_distro: ${{ inputs.ros_distro || (inputs.extra_distros && format('{0},jazzy,kilted,lyrical,rolling', inputs.extra_distros)) || '' }}
