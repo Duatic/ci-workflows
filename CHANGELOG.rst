@@ -5,7 +5,6 @@ Changelog
 2.9.1 (2026-11-19)
 ------------------
 * fix(ci): build and release on jazzy only while the runners are overloaded (#90)
-* doc: update CHANGELOG with upcoming changes section
 
 2.9.0 (2026-11-18)
 ------------------
