@@ -132,8 +132,6 @@ jobs:
           echo "build=${build}" | tee -a "$GITHUB_OUTPUT"
       - id: plan
         env:
-          SEL_DISTRO: ${{ inputs.ros_distro }}
-          EXTRA_DISTROS: ${{ inputs.extra_distros }}
           ARCHITECTURES: ${{ inputs.architectures }}
           GATED: ${{ inputs.gated }}
         run: |
@@ -141,15 +139,9 @@ jobs:
           jq -e 'length > 0 and all(.[]; . == "amd64" or . == "arm64")' <<<"$ARCHITECTURES" >/dev/null ||
             { echo "::error::architectures must list amd64 and/or arm64, got ${ARCHITECTURES}"; exit 1; }
           entry() { printf '"%s"' "$1"; }
-          if [ -z "$SEL_DISTRO" ] || [ "$SEL_DISTRO" = "all" ]; then
-            primary="[$(entry jazzy)]"
-            extra=""
-            for d in ${EXTRA_DISTROS//,/ }; do extra="${extra}$(entry "$d"),"; done
-            secondary="[${extra}$(entry kilted),$(entry lyrical),$(entry rolling)]"
-          else
-            primary="[$(entry "$SEL_DISTRO")]"
-            secondary="[]"
-          fi
+          # Jazzy only while the runners are overloaded; ros_distro and extra_distros are ignored.
+          primary="[$(entry jazzy)]"
+          secondary="[]"
           # Ungated, every distro is a primary leg, so none waits on another.
           if [ "$GATED" = "false" ]; then
             primary=$(jq -c --argjson s "$secondary" '. + $s' <<<"$primary")

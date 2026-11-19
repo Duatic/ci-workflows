@@ -65,8 +65,8 @@ jobs:
       packages: write
     uses: Duatic/duatic_ros2_docker_images/.github/workflows/reusable_nightly_image.yml@v2
     with:
-      # The image factory's default set, as in ci_orchestrator.yml, plus the extra distros.
-      ros_distro: ${{ inputs.ros_distro || (inputs.extra_distros && format('{0},jazzy,kilted,lyrical,rolling', inputs.extra_distros)) || '' }}
+      # Jazzy only while the runners are overloaded; ros_distro and extra_distros are ignored.
+      ros_distro: jazzy
       publish: ${{ inputs.publish }}
       runner: ${{ inputs.runner }}
       runner_arm64: ${{ inputs.runner_arm64 }}
