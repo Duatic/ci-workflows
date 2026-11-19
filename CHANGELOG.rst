@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+Upcoming changes
+----------------
+* fix(ci): build and release on jazzy only while the runners are overloaded (#90)
+
 2.9.0 (2026-11-18)
 ------------------
 * fix(ci): build on image factory v2 (#87)
