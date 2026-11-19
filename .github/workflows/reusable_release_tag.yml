@@ -120,7 +120,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           MERGE: ${{ github.event.pull_request.merge_commit_sha }}
           PR_TITLE: ${{ github.event.pull_request.title }}
-          DISTROS: ${{ inputs.ros_distros }}
+          # Jazzy only while the runners are overloaded; ros_distros is ignored.
+          DISTROS: '["jazzy"]'
         run: |
           # A bare-version title belongs to reusable_repo_release_tag.yml, not this workflow.
           if printf '%s' "$PR_TITLE" | grep -qiE '^release(\([^)]*\))?!?:[[:space:]]*[0-9]+\.[0-9]+\.[0-9]+[[:space:]]*$'; then
@@ -270,7 +271,8 @@ jobs:
           GH_TOKEN: ${{ steps.artifacts.outputs.token }}
           DISPATCH_TOKEN: ${{ steps.token.outputs.token }}
           BUILD: ${{ needs.tag.outputs.build }}
-          DISTROS: ${{ inputs.ros_distros }}
+          # Jazzy only while the runners are overloaded; ros_distros is ignored.
+          DISTROS: '["jazzy"]'
           CHANNEL: stable
           PUBLISHER: ${{ github.repository_owner }}/${{ steps.app.outputs.publisher }}
         run: python3 .checks/release/hand_to_publisher.py
