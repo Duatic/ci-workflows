@@ -2,6 +2,10 @@
 Changelog
 ^^^^^^^^^
 
+2.10.0 (2026-11-20)
+-------------------
+* fix(ci): pull the ci image through the in-cluster ghcr cache (#89)
+
 2.9.1 (2026-11-19)
 ------------------
 * fix(ci): build and release on jazzy only while the runners are overloaded (#90)
