@@ -301,7 +301,7 @@ merge commit, and one GitHub Release is published under it with every package's 
 under its own heading. The same version-sharing requirement `check_release_pr.py` already enforces
 on the pull request is checked again here, in case a merge ever bypasses that check.
 
-**`reusable_edge_build.yml`** runs on a push to the default branch. It builds every package that
+**`reusable_edge_build.yml`** (deprecated: builds of main are built centrally into the nightly channel, and this workflow is removed in the next major) runs on a push to the default branch. It builds every package that
 declares `<duatic_archive_root>`, like the tag workflow, at `<version>+git<commit time>.<commit>`
 (the committer time in UTC, as `YYYYMMDDHHMMSS`), which sorts after the release it follows and
 before the next one. For a squash- or merge-committed
