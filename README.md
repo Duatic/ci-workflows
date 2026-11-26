@@ -305,9 +305,9 @@ on the pull request is checked again here, in case a merge ever bypasses that ch
 declares `<duatic_archive_root>`, like the tag workflow, at `<version>+git<commit time>.<commit>`
 (the committer time in UTC, as `YYYYMMDDHHMMSS`), which sorts after the release it follows and
 before the next one. For a squash- or merge-committed
-main, that is the order commits landed in. What built is handed to the publisher for the archive's `edge` channel, which
-keeps the newest builds of each package. `nightly` is not built: once a day the publisher switches
-it to what `edge` publishes. When nothing changed since the last successful run of the edge workflow on the default branch
+main, that is the order commits landed in. What built is handed to the publisher for the archive's `edge` channel.
+Builds of main go to `nightly` instead: a private publisher repository builds the default branch of
+each repository it lists once a day and publishes it there. When nothing changed since the last successful run of the edge workflow on the default branch
 but files under `.github/`, `CHANGELOG.rst` files and the `<version>` lines of `package.xml` files,
 and no changed workflow calls `reusable_edge_build.yml`, nothing is built: such a push changes no
 package, or only releases one, which the tag workflow builds. A change to the calling workflow counts. Every other push builds every
@@ -349,7 +349,7 @@ the `package.xml` version for a build of main. The package is named explicitly, 
 a `<package>/<version>` tag, a repo-wide `v<version>` tag or a commit, so the build does not need to
 guess it from the tag's shape. A dependency on a package already published resolves from the
 archive the organization variable `ARCHIVE_URL` names, read from the channels in
-`archive_channels`: `stable` for a release, `edge stable` for a build of main, so a dependency
+`archive_channels`: `stable` for a release, `nightly stable` for a build of main, so a dependency
 without a build of main comes from its release. The archive's key is fetched from it and used only
 when its fingerprint is `ARCHIVE_KEY_FINGERPRINT`. Without `ARCHIVE_URL` the build resolves no
 such dependency and fails at the first one. Signing and publishing belong to the archive host.
@@ -460,8 +460,8 @@ And in `ci.yml`, beside the orchestrator, for either mode:
 | `repository` | build | no | the caller | `owner/name` of the repository holding the tag, for a dispatch from elsewhere. |
 | `ros_distro` | build | no | `jazzy` | Distro to build for. The Ubuntu base is not an input; it's derived from this instead. |
 | `version_suffix` | build | no | | Appended to the `package.xml` version, starting with `+` or `~`. The build fails if the `.deb` does not carry it. |
-| `archive_channels` | build | no | `stable` | Archive channels the build's dependencies are read from, e.g. `edge stable`. |
-| `channel` | publish | no | `stable` | Archive channel to publish into: `stable` or `edge`. |
+| `archive_channels` | build | no | `stable` | Archive channels the build's dependencies are read from, e.g. `nightly stable`. |
+| `channel` | publish | no | `stable` | Archive channel to publish into: `stable` for a release, `edge` for the deprecated edge build. Builds of main go to `nightly` through a private publisher repository. |
 | `runner` | prepare, prepare-repo, tag, repo-tag, build | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
 | Secret | Workflow | Required | Description |

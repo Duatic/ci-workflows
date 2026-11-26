@@ -48,7 +48,7 @@ on:
         default: ''
         type: string
       archive_channels:
-        description: 'Archive channels whose packages the build depends on, e.g. "edge stable" for a build of main'
+        description: 'Archive channels whose packages the build depends on, e.g. "nightly stable" for a build of main'
         default: 'stable'
         type: string
       root:
@@ -100,7 +100,7 @@ on:
         required: false
         type: string
       archive_channels:
-        description: 'Archive channels whose packages the build depends on, e.g. "edge stable" for a build of main'
+        description: 'Archive channels whose packages the build depends on, e.g. "nightly stable" for a build of main'
         default: 'stable'
         required: false
         type: string
