@@ -2,6 +2,12 @@
 Changelog
 ^^^^^^^^^
 
+2.11.0 (2026-11-27)
+-------------------
+* feat(release): keep chosen commit types in a changelog release (#95)
+* docs: deprecate the edge build, builds of main go to nightly (#93)
+* ci(release): build with duatic_devtools v2 (#94)
+
 2.10.0 (2026-11-20)
 -------------------
 * fix(ci): pull the ci image through the in-cluster ghcr cache (#89)
