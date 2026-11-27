@@ -24,7 +24,7 @@ on:
         required: false
         type: string
       channel:
-        description: 'Archive channel to publish into: stable for releases, edge for builds of main'
+        description: 'Archive channel to publish into: stable for releases, edge for the deprecated edge build; builds of main go to nightly through a private publisher repository'
         default: 'stable'
         required: false
         type: string

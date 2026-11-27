@@ -1,3 +1,4 @@
+# DEPRECATED: builds of main are built centrally into the nightly channel. Removed in the next major.
 name: edge build
 # Central, org-wide reusable workflow. On a push to the default branch, builds the .debs of every
 # package that declares <duatic_archive_root>, for each distro in ros_distros on amd64 and arm64,
