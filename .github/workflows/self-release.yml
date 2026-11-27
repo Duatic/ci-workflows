@@ -23,6 +23,7 @@ jobs:
     uses: ./.github/workflows/reusable_prepare_changelog_release.yml
     with:
       bump: ${{ inputs.bump }}
+      keep_types: ci
       runner: ${{ inputs.runner }}
     secrets: inherit
 

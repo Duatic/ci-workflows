@@ -45,15 +45,16 @@ Either way, each commit subject is read with the grammar the title check enforce
   * "!" before the colon, or a "BREAKING CHANGE:" footer, marks a breaking change;
   * feat (or feature), deprecate, fix, perf, refactor and docs are kept, in that order after
     breaking changes;
-  * chore, ci, test, build and release are dropped;
+  * chore, ci, test, build and release are dropped, except a type named with --keep, which is
+    kept last; release is always dropped;
   * anything else is kept last, so an unlabelled change is never silently lost.
 
 Bullets under "Upcoming changes" lead a package's new section and that heading is removed;
 anything there that is not a flat bullet stops the release instead of being dropped.
 
-Usage:  prepare_release.py --package NAME [--bump B] [--path DIR] [--summary FILE] [--version-out FILE]
-        prepare_release.py --repo --bump B [--path DIR] [--summary FILE] [--version-out FILE]
-        prepare_release.py --changelog [--bump B] [--path DIR] [--summary FILE] [--version-out FILE]
+Usage:  prepare_release.py --package NAME [--bump B] [--keep TYPE]... [--path DIR] [--summary FILE] [--version-out FILE]
+        prepare_release.py --repo --bump B [--keep TYPE]... [--path DIR] [--summary FILE] [--version-out FILE]
+        prepare_release.py --changelog [--bump B] [--keep TYPE]... [--path DIR] [--summary FILE] [--version-out FILE]
 Exit 0 with every touched package.xml and CHANGELOG.rst rewritten, 1 with nothing written.
 """
 
@@ -594,10 +595,18 @@ def main():
         choices=BUMPS,
         help="the bump: overrides the derived one for --package and --changelog, required for --repo",
     )
+    ap.add_argument(
+        "--keep",
+        action="append",
+        default=[],
+        choices=sorted(DROPPED - {"release"}),
+        help="a commit type to keep instead of dropping; repeatable",
+    )
     ap.add_argument("--path", default=".", help="the repository root")
     ap.add_argument("--summary", help="write a Markdown summary for the pull request here")
     ap.add_argument("--version-out", help="write just the new version string here")
     args = ap.parse_args()
+    DROPPED.difference_update(args.keep)
     os.chdir(args.path)
 
     if args.repo and not args.bump:

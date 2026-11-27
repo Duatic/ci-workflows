@@ -417,6 +417,11 @@ git checkout -q main
 git tag v0.1.1
 touch_commit . "ci: a workflow"
 check 1 "nothing but dropped commits since the tag" --changelog
+check 2 "--keep refuses a type that is not dropped" --changelog --keep feat
+check 2 "--keep refuses release" --changelog --keep release
+check 0 "--keep ci keeps a ci commit" --changelog --keep ci --version-out out_version.txt
+expect "the ci commit is in the changelog" 1 '^\* ci: a workflow$' CHANGELOG.rst
+line "and it is a patch" 1 "0.1.2" out_version.txt
 
 echo
 echo "  $pass passed, $fail failed"
