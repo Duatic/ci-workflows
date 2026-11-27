@@ -159,7 +159,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: Duatic/duatic_devtools
-          ref: v1
+          ref: v2
           path: .devtools
 
       # Dependencies on packages already published resolve from the archive the ARCHIVE_URL
