@@ -24,6 +24,11 @@ on:
         default: 'derived'
         required: false
         type: string
+      keep_types:
+        description: 'Space-separated commit types to keep in the changelog instead of dropping, e.g. "ci" for a repository of workflows.'
+        default: ''
+        required: false
+        type: string
       runner:
         description: 'Runner label(s) to run the job on, e.g. "ubuntu-latest" or "self-hosted".'
         default: 'ubuntu-latest'
@@ -90,9 +95,11 @@ jobs:
         id: prepare
         env:
           BUMP: ${{ inputs.bump }}
+          KEEP_TYPES: ${{ inputs.keep_types }}
         run: |
           args=(--changelog --summary "$RUNNER_TEMP/body.md" --version-out "$RUNNER_TEMP/version")
           [ -z "$BUMP" ] || [ "$BUMP" = derived ] || args+=(--bump "$BUMP")
+          for t in $KEEP_TYPES; do args+=(--keep "$t"); done
           python3 .checks/release/prepare_release.py "${args[@]}"
           echo "version=$(cat "$RUNNER_TEMP/version")" >> "$GITHUB_OUTPUT"
 

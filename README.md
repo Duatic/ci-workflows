@@ -524,6 +524,7 @@ jobs:
 | Input | Workflow | Required | Default | Description |
 |---|---|---|---|---|
 | `bump` | prepare | no | `derived` | `major`, `minor` or `patch`; `derived` or empty takes it from the commits. |
+| `keep_types` | prepare | no | `''` | Space-separated commit types to keep instead of dropping, e.g. `ci` for a repository whose workflows are what it ships. A kept commit counts as a patch. `release` is always dropped. |
 | `move_major_tag` | tag | no | `true` | Move `v<major>` to the release, for callers pinning the major version. |
 | `runner` | prepare, tag | no | `ubuntu-latest` | Runner label(s), e.g. `self-hosted`. |
 
